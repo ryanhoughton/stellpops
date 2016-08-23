@@ -5,10 +5,11 @@ import specTools as t
 from os.path import expanduser
 import atpy as at
 
+basedir="/home/houghton/z/data/stellar_pops/"
 
 L_sun = 3.826E33 # the L_sun defined by BC03 in erg/s
 
-def loadCD12AGEspecs(sedpath="~/z/data/stellar_pops/CvD12_v1.2", ageglob="t??.?_solar.ssp", massfile="mass_ssp.dat", model="CD12", Z=0.02, verbose=True):
+def loadCD12AGEspecs(sedpath="CvD12_v1.2", ageglob="t??.?_solar.ssp", massfile="mass_ssp.dat", model="CD12", Z=0.02, verbose=True):
     """
     Author:  Ryan Houghton (18/09/12)
 
@@ -19,9 +20,7 @@ def loadCD12AGEspecs(sedpath="~/z/data/stellar_pops/CvD12_v1.2", ageglob="t??.?_
        - Wavelength (AA)
        - Flux density (erg/s/AA/cm^2)
 
-    Inputs:
-       - 
-       -
+    
     """
 
     # get the AGE files to read in
