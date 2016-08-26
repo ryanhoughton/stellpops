@@ -858,67 +858,7 @@ class spectrum:
 
         """
 
-        # scale wave to be between -1 and 1
-        x = 2.0*(self.lam-self.lam.min())/(self.lam.max()-self.lam.min()) - 1.0
-
-        nflam  = []
-        pfits  = []
         
-        # sort out err 
-        if hasattr(self, 'eflam'):
-            neflam = []
-            eflams = self.eflam
-        else:
-            eflams = [None for flam in self.flam]
-        # loop over spectra, normalising
-        for flam, eflam in zip(self.flam, eflams):
-            # init
-            xfit = np.copy(x)
-            wfit = np.copy(self.lam)
-            yfit = np.copy(flam)
-            if eflam is not None: efit = np.copy(eflam)
-
-            # remove nans and err<0.0
-            if eflam is not None:
-                loc=np.where((~np.isfinite(flam)) | (~np.isfinite(eflam)) | (eflam<=0.0))
-            else:
-                loc=np.where(~np.isfinite(flam))  
-            good = np.ones_like(self.lam, dtype=np.bool)
-            good[loc]=False
-            keep = np.where(good)
-            xfit = xfit[keep]; wfit = wfit[keep]; yfit = yfit[keep];
-            if eflam is not None: efit=efit[keep]
-
-            # remove abs lines from poly fit
-            if type(indLib)!=type(None):
-                locs=[]
-                for ind in indLib.names:
-                    loc = np.where((wfit>getattr(indLib,ind)['ind_start']) & (wfit<getattr(indLib,ind)['ind_stop']))[0]
-                    if len(loc)>0:
-                        locs.extend(loc)
-                good = np.ones_like(xfit, dtype=np.bool)
-                good[locs] = False
-                keep = np.where(good)
-                xfit = xfit[keep]
-                wfit = wfit[keep]
-                yfit = yfit[keep]
-                if eflam is not None: efit=efit[keep]
-
-            # fit poly
-            if eflam is not None:
-                coef = cheby.chebfit(xfit, yfit, deg=polyOrder, w=1.0/efit**2.0) # variance weight poly fit
-            else:
-                coef = cheby.chebfit(xfit, yfit, deg=polyOrder)
-
-            polyFit = cheby.chebval(x,coef)
-
-            # normalise 
-            nflam.append(flam/polyFit)
-            pfits.append(polyFit)
-
-            # return extra arrays
-            if eflam is not None:
-                neflam.append(eflam/polyFit)
                 
         self.nflam = np.array(nflam)
         self.pfits = np.array(pfits)
@@ -1479,3 +1419,64 @@ def air2vac(wave_air, useIDLcoef=True, verbose=False):
         wave_vac[g] = wave_air[g]*fact      # Convert Wavelength
     return wave_vac
 
+def normaliseSpec(wave, spec, errSpec=None, polyOrder=3, indLib=None, maxErrVal=999.0, returnPolyFit=False):
+    """
+    Normalise spectrum continuum to one, avoiding abs lines (defined by indLib)
+    
+    """
+
+    # scale wave to be between -1 and 1
+    x = 2.0*(wave-wave.min())/(wave.max()-wave.min()) - 1.0
+
+    xfit = np.copy(x)
+    wfit = np.copy(wave)
+    yfit = np.copy(spec)
+    if type(errSpec)!=type(None): efit = np.copy(errSpec)
+    
+    # remove nans and err<0.0
+    if type(errSpec)!=type(None):
+        loc=np.where((~np.isfinite(spec)) | (~np.isfinite(errSpec)) | (errSpec<=0.0))
+    else:
+        loc=np.where(~np.isfinite(spec))  
+    good = np.ones_like(spec, dtype=np.bool)
+    good[loc]=False
+    keep = np.where(good)
+    xfit = xfit[keep]; wfit = wfit[keep]; yfit = yfit[keep];
+    if type(errSpec)!=type(None): efit=efit[keep]
+    
+    # remove abs lines from poly fit
+    if type(indLib)!=type(None):
+        locs=[]
+        for ind in indLib.names:
+            loc = np.where((wfit>getattr(indLib,ind)['ind_start']) & (wfit<getattr(indLib,ind)['ind_stop']))[0]
+            if len(loc)>0:
+                locs.extend(loc)
+        good = np.ones_like(xfit, dtype=np.bool)
+        good[locs] = False
+        keep = np.where(good)
+        xfit=xfit[keep]
+        wfit=wfit[keep]
+        yfit=yfit[keep]
+        if type(errSpec)!=type(None): efit=efit[keep]
+
+    # fit poly
+    if type(errSpec)!=type(None):
+        coef = cheby.chebfit(xfit, yfit, deg=polyOrder, w=1.0/efit**2.0) # variance weight poly fit
+    else:
+        coef = cheby.chebfit(xfit, yfit, deg=polyOrder)
+        
+    polyFit = cheby.chebval(x,coef)
+
+    # normalise 
+    normSpec = spec/polyFit
+    rlist = [normSpec]
+
+    # return extra arrays
+    if type(errSpec)!=type(None):
+        normErrSpec = errSpec/polyFit
+        rlist.append(normErrSpec)
+        
+    if returnPolyFit: rlist.append(polyFit)
+
+    return rlist
+    

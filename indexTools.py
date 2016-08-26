@@ -129,7 +129,8 @@ class ind(dict):
 
     def plotIndexBands(self, scale=1.0, alpha=0.1, contCol='blue', indCol='red', \
                        ymin=-100.0, ymax=100.0, autoy=False, noContinuua=False, \
-                       addLabel=True, justLine=True, linePos=0.9, labelPos=0.95, labelSize=20.0):
+                       addLabel=True, justLine=True, linePos=0.9, labelPos=0.95, \
+                       labelSize=20.0, showHorizLine=False, usePrettyPrint=True):
         """
         Overplot the regions used for continuum and feature bandpasses
         
@@ -155,9 +156,16 @@ class ind(dict):
                                     [ymin,ymin], [ymax,ymax], color=contCol, alpha=alpha)
         if addLabel:
             for start,stop in zip(self['ind_start'], self['ind_stop']):
-                pl.text(np.mean([start,stop])*scale, labelPos*ymax, self['name'], \
+                if usePrettyPrint:
+                    label=prettyPrint[self['name']]
+                else:
+                    label=self['name']
+                xpos = np.mean([start,stop])*scale
+                ypos = labelPos*ymax
+                pl.text(xpos, ypos, label, \
                         horizontalalignment='center', fontsize=labelSize)
-                pl.plot([start*scale,stop*scale], [ymax*labelPos*0.95, ymax*labelPos*0.95], "k-")
+                if showHorizLine:
+                    pl.plot([start*scale,stop*scale], [ymax*labelPos*0.95, ymax*labelPos*0.95], "k-")
 
 
 
@@ -315,7 +323,7 @@ class indlib():
     def plotIndexBands(self, scale=1.0, alpha=0.1, contCol='blue', indCol='red', \
                        xmin=0.0, xmax=1e9, ymin=-100.0, ymax=100.0, autoxy=False, noContinuua=False, \
                        addLabel=False, justLine=True, linePos=[0.75,0.8,0.85,0.9], \
-                       labelPos=[0.8,0.85,0.9,0.95], \
+                       labelPos=[0.8,0.85,0.9,0.95], stagger=0.1, nstagger=2, \
                        labelSize=20.0, indexList=None):
         """        Overplot the index bands, that are in the current plot range
         
@@ -332,14 +340,16 @@ class indlib():
         nlabel = len(labelPos)
         nline = len(linePos)
         assert nlabel==nline, "#labels!=#lines"
+        nindex=0
         for n, name in enumerate(indexList):
             if np.any(self[name]['blue_start']*scale>xmin) & np.any(self[name]['red_stop']*scale<xmax):
-                labpos = labelPos[n % nlabel]
-                linpos = linePos[n % nlabel]
+                labpos = labelPos[nindex % nlabel]
+                linpos = linePos[nindex % nlabel]
                 self[name].plotIndexBands(scale=scale, alpha=alpha, contCol='blue', indCol='red', \
                                           ymin=ymin, ymax=ymax, autoy=False, justLine=justLine, \
                                           addLabel=addLabel, labelPos=labpos, linePos=linpos, \
                                           labelSize=labelSize, noContinuua=noContinuua)
+                nindex+=1
     def subset(self, indexList):
         """
         RH 22/8/2016
