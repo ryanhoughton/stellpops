@@ -41,7 +41,7 @@ def loadT10Models(dir=basedir+'TMJ10/', file='tmj', abundance='', \
     return tab
 
 def loadModels(dir=basedir+'TMB03/', file='alpha-models', abundance='', suffix='.dat', \
-                    Fe1='Fe5270', Fe2='Fe5335', rawTable=False, verbose=True):
+                    Fe1='Fe5270', Fe2='Fe5335', Fe3='Fe5406', rawTable=False, verbose=True):
     """
     RH 23/6/16
 
@@ -58,7 +58,9 @@ def loadModels(dir=basedir+'TMB03/', file='alpha-models', abundance='', suffix='
     # add [MgFe], [MgFe]'
     tab2.add_column('MgFeP', it.calcMgFePrime(tab2.Mgb, tab2[Fe1], tab2[Fe2]))
     tab2.add_column('MgFe', it.calcMgFe(tab2.Mgb, tab2[Fe1], tab2[Fe2]))
+    if Fe3 is not None: tab2.add_column('MgFe3', it.calcMgFe(tab2.Mgb, tab2[Fe1], tab2[Fe2], tab2[Fe3]))
     tab2.add_column('meanFe', it.calcMeanFe(tab2[Fe1], tab2[Fe2]))
+    if Fe3 is not None: tab2.add_column('mean3Fe', it.calcMeanFe(tab2[Fe1], tab2[Fe2], tab2[Fe3]))
     
     if verbose: print 'Available rows are: ', tab2.keys()
     
@@ -138,7 +140,8 @@ def showMgFePrime(ages=[12.0], iron1='Fe5270', iron2='Fe5335', rescale=False, ta
 def showZgrid(index1, index2, minage=1.0, maxage=15.0, minZ=-1, maxZ=1.0, alpha='A=0.0', color="k", \
               ageLabels=True, Zlabels=True, labelsize=10, ZforAgeLabel='min', ageForZlabel='min', \
               aha='right', ava='bottom', zha='right', zva='top', showAlpha=False, \
-              ageZforAlphaLabel=['max','max'], Fe1='Fe5270', Fe2='Fe5335', tab=None):
+              ageZforAlphaLabel=['max','max'], Fe1='Fe5270', Fe2='Fe5335', tab=None, \
+              alphalabs={'A=0.0':r'[$\alpha$/Fe]=0.0', 'A=0.3':r'[$\alpha$/Fe]=0.3', 'A=0.5':r'[$\alpha$/Fe]=0.5'}):
     """
     Plot a classic grid for abundances
 
@@ -222,7 +225,7 @@ def showZgrid(index1, index2, minage=1.0, maxage=15.0, minZ=-1, maxZ=1.0, alpha=
         
         pl.text(tab[Zkeys[Zloc[z4AlphaLab]]][alpha][index1][ageloc[age4AlphaLab]],\
                 tab[Zkeys[Zloc[z4AlphaLab]]][alpha][index2][ageloc[age4AlphaLab]], \
-                alpha, color=color)
+                alphalabs[alpha], color=color)
           
     pl.xlabel(index1)
     pl.ylabel(index2)
@@ -273,3 +276,25 @@ def compareHbMgFe(minage=1.0, maxage=15.0):
     showZgrid('MgFeP', 'Hb', alpha='A=0.3', color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab2, \
               minage=minage, maxage=maxage)
     pl.title('New Primed Index with Fe5406')
+
+
+def compareT03T11():
+    """
+    RH 18/10/2016
+
+    Compare old and new models. May also help me figure out if T11 is at Lick resolution.
+
+    """
+
+    t03 = loadT03Models()
+    t11 = loadT10Models()
+
+    pl.figure()
+    pl.plot(t03['Z=0.0']['A=0.0']['MgFeP'], t03['Z=0.0']['A=0.0']['Fe5335'], "k-")
+    pl.plot(t11['Z=0.0']['A=0.0']['MgFeP'], t03['Z=0.0']['A=0.0']['Fe5335'], "r-")
+    pl.plot(t03['Z=0.0']['A=0.3']['MgFeP'], t03['Z=0.0']['A=0.3']['Fe5335'], "k:")
+    pl.plot(t11['Z=0.0']['A=0.3']['MgFeP'], t03['Z=0.0']['A=0.3']['Fe5335'], "r:")
+    pl.plot(t03['Z=0.0']['A=0.5']['MgFeP'], t03['Z=0.0']['A=0.5']['Fe5335'], "k--")
+    pl.plot(t11['Z=0.0']['A=0.5']['MgFeP'], t03['Z=0.0']['A=0.5']['Fe5335'], "r--")
+
+    pdb.set_trace()

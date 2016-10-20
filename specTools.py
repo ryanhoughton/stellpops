@@ -3,8 +3,8 @@ import pylab as pl
 import string as strg
 import scipy.interpolate as ip
 from numpy.polynomial import chebyshev as cheby
-import BC03tools as bc
-import M05tools as ma
+#from stellpops import BC03tools as bc
+#from stellpops import M05tools as ma
 import re
 import os
 import pdb
@@ -14,7 +14,7 @@ from nearest import nearest as nn
 
 # globals
 
-c = 299792458.0 # m/s
+c = 2997924580 # m/s
 pc= 3.08568025E16
 d_sun = 149597887.5e3 # m
 
@@ -129,6 +129,8 @@ class spectrum:
                 self.eflam = eflam
                 # sanity check
                 assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
+            #else:
+            #    self.eflam = [None for f in self.flam] # make a list of 'None's
 
             self.calcmuspec(filter=filter)
 
@@ -607,226 +609,38 @@ class spectrum:
             self.eflam = neweflams
         self.calcmuspec()
         
-    def calcIndex(self, index, disp=None, round_prec=8, verbose=False):
-        '''Function to calculate absorption line indices.
-        Function takes as argument an SED of form (wavlength col, data col)
-        and a choice of line index (NaI, MgI, FeH, CaT, PaT).
+    def calcIndex(self, index, disp=None, round_prec=10, method=0, verbose=False):
+        """
+        Function to calculate absorption line index strength.
 
         Inputs:
-
-            
             index: an indlib class from indexTools.py
-            disp: float - spectral dispersion [A/pixel]
-            var_SED: variance spectrum corresponding to SED of the same form as SED.
+            disp: float - spectral dispersion [A/pixel], NOT anything to do with spectral resolution.
+            round_prec: precision for rounding wavelengths (Method=4)
+            Method: Specify the index calculation method
+                    0 = Simple method using means (no variance weighting)
+                    1 = Simple method using median (no variance weighting)
+                    3 = Linear fit, no variance weighting
+                    4 = Full inverse varaince weighting and propagation of errors (Cenarro 2001)
 
         Outputs:
-
             ind: value of chosen index
-            ind_var_tot: variance on index measurement.
-        '''
-
-
-        # check uniform spacing of data in wavelegth
-        data_loc_start = np.where(self.lam > np.min(index['cont_start']))[0]
-        data_start = data_loc_start[data_loc_start.argmin()]#self.lam[data_loc_start].argmin()
-        data_loc_stop = np.where(self.lam < np.max(index['cont_stop']))[0]
-        data_stop = data_loc_stop[data_loc_stop.argmax()]
-        deltas = np.round(self.lam[data_start+1:data_stop]-self.lam[data_start:data_stop-1],round_prec)
-        delta = np.median(deltas)
-        if type(disp)==type(None): disp=delta
-        assert np.all(deltas==delta), "Wavelength spacing not uniform"
-        
-        # init
-        indices = np.zeros(len(self.flam),dtype=float)
-        index_vars = np.zeros_like(indices)
-        # loop over spectra and calc indices
-        for spec in xrange(len(self.flam)):
-            SED = np.column_stack((self.lam, self.flam[spec]))
-            if hasattr(self, 'eflam'):
-                var_SED = np.column_stack((self.lam, self.eflam[spec]**2.0)) # make variance array
-            else:
-                var_SED = None
-                
-            #Method for calculating pseudo-continuum using equations from
-            #Cenarro et al (2001) Appendix A.
-            eps1, eps2, eps3, eps4, eps5 = 0., 0., 0., 0., 0.
-            if var_SED is None:
-                for j in xrange(index['ncont']):
-                    #Find first and last data indices within bandpass
-                    a = np.where(SED[:,0] > index['cont_start'][j])[0][0]
-                    b = np.where(SED[:,0] < index['cont_stop'][j])[0][-1]
-                    #Determine which pixel is closest to start and end of bandpass
-                    if (index['cont_start'][j] - SED[a-1,0]) < (SED[a,0] - index['cont_start'][j]):
-                        a -= 1
-                    if (index['cont_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['cont_stop'][j]):
-                        b += 1      
-
-                    vals = np.copy(SED[a:b+1,:])
-
-                    e1 = np.ones(len(vals[:,0]))
-                    eps1 += np.sum(e1)            
-                    e2 = vals[:,0]
-                    eps2 += np.sum(e2)           
-                    e3 = vals[:,0]**2
-                    eps3 += np.sum(e3)            
-                    e4 = vals[:,1]
-                    eps4 += np.sum(e4)            
-                    e5 = vals[:,0]*vals[:,1]
-                    eps5 += np.sum(e5)
-
-                delta = eps1*eps3 - eps2**2
-                alpha1 = (1/float(delta))*(eps3*eps4 - eps2*eps5)
-                alpha2 = (1/float(delta))*(eps1*eps5 - eps2*eps4)
-
-            #If real spectrum with variance spectrum:
-            elif var_SED is not None:
-                for j in xrange(index['ncont']):
-                    #Find first and last data indices within bandpass
-                    a = np.where(SED[:,0] > index['cont_start'][j])[0][0]
-                    b = np.where(SED[:,0] < index['cont_stop'][j])[0][-1]
-                    #Determine which pixel is closest to start and end of bandpass
-                    if (index['cont_start'][j] - SED[a-1,0]) < (SED[a,0] - index['cont_start'][j]):
-                        a -= 1
-                    if (index['cont_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['cont_stop'][j]):
-                        b += 1      
-
-                    vals = np.copy(SED[a:b+1,:])
-                    err_vals = np.copy(var_SED[a:b+1,:])
-
-                    e1 = np.ones(len(vals[:,0]))/err_vals[:,1]
-                    eps1 += np.sum(e1)            
-                    e2 = vals[:,0]/err_vals[:,1]
-                    eps2 += np.sum(e2)            
-                    e3 = vals[:,0]**2/err_vals[:,1]
-                    eps3 += np.sum(e3)            
-                    e4 = vals[:,1]/err_vals[:,1]
-                    eps4 += np.sum(e4)            
-                    e5 = vals[:,0]*vals[:,1]/err_vals[:,1]
-                    eps5 += np.sum(e5)
-
-                delta = eps1*eps3 - eps2**2
-                alpha1 = (1/float(delta))*(eps3*eps4 - eps2*eps5)
-                alpha2 = (1/float(delta))*(eps1*eps5 - eps2*eps4)
+            ind_var (optional): variance on index measurement if spectrum class has variance defined
             
-##            #Test to check that continua works
-##            xs = np.arange(cont[0], cont[-1], 1)
-##            ys = alpha2*xs + alpha1
-##            pl.plot(SED[:,0], SED[:,1], 'k-', xs, ys, 'r--')
-##            pl.show()
-                
-            #Next stage, calculate index
-            ind = 0.; ind_var_tot = 0.
-            ind_var_1 = 0.; ind_var_2 = 0.
-            for j in xrange(index['nfeat']):
-                #Find first and last data indices within bandpass
-                a = np.where(SED[:,0] > index['ind_start'][j])[0][0]
-                b = np.where(SED[:,0] < index['ind_stop'][j])[0][-1]
-                #Determine which pixel is closest to start and end of bandpass
-                if (index['ind_start'][j] - SED[a-1,0]) < (SED[a,0] - index['ind_start'][j]):
-                    a -= 1
-                if (index['ind_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['ind_stop'][j]):
-                    b += 1
-                #Multiplicative factors for start and end pixels
-                Cstart_c = (SED[a,0] - index['ind_start'][j] + 0.5*disp)/disp
-                Cend_c = (index['ind_stop'][j] - SED[b,0] + 0.5*disp)/disp
+        """
+        # loop through various methods
+        if method==0:
+            vals = calcSimpleIndex(self, index, contMethod='mean', verbose=verbose)
+        elif method==1:
+            vals = calcSimpleIndex(self, index, contMethod='median', verbose=verbose)
+        elif method==2:
+            raise ValueError("Code not written")
+        elif method==3:
+            vals = calcCenarroIndex(self, index, disp=disp, round_prec=round_prec, verbose=verbose)
+        else:
+            raise ValueError("Method not understood")
 
-                Cvals = SED[a:b+1,:]
-                
-                contys = alpha2*Cvals[:,0] + alpha1
-                Ccontvals = np.column_stack((Cvals[:,0],contys))
-
-                array = (1-Cvals[:,1]/Ccontvals[:,1])
-                array[0] *= Cstart_c
-                array[-1] *= Cend_c
-                value = disp*np.sum(array)
-                ind += value
-
-                ###ERRORS:
-                if var_SED is not None:
-                    #Index error:
-                    Cerrvals = var_SED[a:b+1,:]
-                    
-                    ind_cont_var = np.zeros(len(Ccontvals),dtype=float)
-                    #Loop over continuum feature pixels
-                    for x in xrange(len(ind_cont_var)): 
-                        #Calculate continuum variance:
-                        Cvar_cont = 0.
-                        for i in xrange(index['ncont']):
-                            #Find first and last data indices within bandpass
-                            ia = np.where(SED[:,0] > index['cont_start'][i])[0][0]
-                            ib = np.where(SED[:,0] < index['cont_stop'][i])[0][-1]
-                            #Determine which pixel is closest to start and end of bandpass
-                            if (index['cont_start'][i] - SED[ia-1,0]) < (SED[ia,0] - index['cont_start'][i]):
-                                ia -= 1
-                            if (index['cont_stop'][i] - SED[ib,0]) > (SED[ib+1,0] - index['cont_stop'][i]):
-                                ib += 1      
-                            #Extract relevent region of SED and variance SED
-                            contvals = np.copy(SED[ia:ib+1,:])
-                            var_contvals = np.copy(var_SED[ia:ib+1,:])
-                            #Apply equation
-                            contsum = ((1/delta)*((1/var_contvals[:,1])*eps3 - (contvals[:,0]/var_contvals[:,1])*eps2)\
-                                      + (Ccontvals[x,0]/delta)*((contvals[:,0]/var_contvals[:,1])*eps1\
-                                                                - (1/var_contvals[:,1])*eps2))**2.*var_contvals[:,1]
-                            Cvar_cont += np.sum(contsum)
-                        ind_cont_var[x] = Cvar_cont
-
-                    Carray_var_1 = (Ccontvals[:,1]**2*Cerrvals[:,1] + Cvals[:,1]**2*ind_cont_var)/\
-                                 Ccontvals[:,1]**4.
-                    Carray_var_1[0] *= Cstart_c
-                    Carray_var_1[-1] *= Cend_c
-                    ind_var_1 += np.sum(Carray_var_1)
-
-                    #For part 2 of equation which includes covariance matrix:
-                    #Loop over pixels in spectral feature
-                    for y in xrange(len(Cvals[:,0])):
-                        #Loop over first spectral feature
-                        for z in xrange(index['nfeat']):
-                            #Find first and last data indices within bandpass
-                            iia = np.where(SED[:,0] > index['ind_start'][z])[0][0]
-                            iib = np.where(SED[:,0] < index['ind_stop'][z])[0][-1]
-                            #Determine which pixel is closest to start and end of bandpass
-                            if (index['ind_start'][z] - SED[iia-1,0]) < (SED[iia,0] - index['ind_start'][z]):
-                                iia -= 1
-                            if (index['ind_stop'][z] - SED[iib,0]) > (SED[iib+1,0] - index['ind_stop'][z]):
-                                iib += 1
-                            #Multiplicative factors for start and end pixels
-                            Fstart_c = (SED[iia,0] - index['ind_start'][z] + 0.5*disp)/float(disp)
-                            Fend_c = (index['ind_stop'][z] - SED[iib,0] + 0.5*disp)/float(disp)
-                            
-                            Fvals = SED[iia:iib+1,:]
-                            Fcontys = alpha2*Fvals[:,0] + alpha1
-                            Fcontvals = np.column_stack((Fvals[:,0],Fcontys))
-                            #Loop over pixels in second spectral feature
-                            for zz in xrange(len(Fvals[:,0])):
-                                cov_part = ((1/delta**2)*(eps1*eps3*eps3-eps2*eps2*eps3))+\
-                                           ((1/delta**2)*(eps2*eps2*eps2-eps1*eps2*eps3))*(Cvals[y,0] + Fvals[zz,0])+\
-                                           ((1/delta**2)*(eps1*eps1*eps3-eps1*eps2*eps2))*(Cvals[y,0]*Fvals[zz,0])
-                                
-                                part_2_num = (Cvals[y,1]*Fvals[zz,1]*cov_part)/(Ccontvals[y,1]**2*Fcontvals[zz,1]**2)
-                                #edge pixel factors
-                                if y == 0.:
-                                    part_2_num *= Cstart_c
-                                if zz == 0.:
-                                    part_2_num *= Fstart_c
-                                if y == (len(Cvals[:,0])-1):
-                                    part_2_num *= Cend_c
-                                if zz == (len(Fvals[:,0])-1):
-                                    part_2_num *= Fend_c
-
-                                ind_var_2 += part_2_num
-
-                    ind_var_tot = disp**2*(ind_var_1 + ind_var_2)
-
-            if verbose: print index['name']+' = %.3f pm %.3f Angstroms' % (ind, np.sqrt(ind_var_tot))
-            indices[spec] = ind
-            index_vars[spec] = ind_var_tot
-
-        rlist = indices
-        if var_SED is not None:
-            rlist = [indices, np.sqrt(index_vars)]
-        
-        return rlist #indices#, index_vars
-
+        return vals
 
     def CaT_star(self, disp, var_SED=None):
         '''Function to calculate CaT* index
@@ -852,23 +666,48 @@ class spectrum:
         return cat_star
 
 
-    def normaliseSpec(self, polyOrder=3, indLib=None, maxErrVal=999.0, overwrite=True):
+    def normaliseSpec(self, polyOrder=3, indLib=None, maxErrVal=999.0, overwrite=True, \
+                      keepPoly=False):
         """
         Normalise spectrum continuum to one, avoiding abs lines
 
         """
 
-        
-                
-        self.nflam = np.array(nflam)
-        self.pfits = np.array(pfits)
-        if hasattr(self, 'eflam'): self.enflam = np.array(neflam)
+        nfs=[]
+        nefs=[]
+        pfs=[]
+        nspec = len(self.flam)
+
+        # loop over specs, normalising
+        for ni in xrange(nspec):
+            # take local copies of flam and eflam (if defined)
+            f=self.flam[ni]
+            if hasattr(self,"eflam"):
+                ef = self.flam[ni]
+            else:
+                ef = None
+            # apply normalisation
+            rl = normaliseSpec(self.lam, f, eflam=ef, polyOrder=polyOrder, indLib=indLib, \
+                              maxErrVal=maxErrVal, returnPoly=keepPoly)
+            nfs.append(rl[0])
+            # sort additional outputs
+            listindex=0
+            if ef is not None:
+                listindex+=1
+                nefs.append(rl[listindex]) # error
+            if keepPoly:
+                listindex+=1
+                pfs.append(rl[listindex])  # polynomial fit
+
+                # save copied to object
+        self.nflam = np.array(nfs)
+        if len(nefs)!=0: self.neflam = np.array(nefs)
+        if keepPoly: self.pfits = np.array(pfs)
         
         if overwrite:
             self.flam = self.nflam
-            if hasattr(self, 'eflam'): self.eflam = self.neflam
-    
-        
+            if len(nefs)!=0: self.eflam = self.neflam
+
 
 ###################################### END OF SPECTRUM CLASS #####################################
 
@@ -1317,19 +1156,6 @@ def loadHSTVegaSpec(dir="~/z/data/stellar_pops/HSTcals/", file="alpha_lyr_stis_0
 
     return vega
 
-def loadSpecs(verbose=False):
-    """
-    Quickly load the BC03 and M05 specs
-    """
-
-    bcs = bc.loadBC03ssps(verbose=verbose)
-    mas = ma.loadM05ssps(verbose=verbose)
-    specs = []
-    for s in bcs: specs.append(s)
-    for s in mas: specs.append(s)
-
-    return specs
-
 def rebin(x, y, newx, verbose=True, flux=True):
     """
     RH 23/4/15
@@ -1419,31 +1245,396 @@ def air2vac(wave_air, useIDLcoef=True, verbose=False):
         wave_vac[g] = wave_air[g]*fact      # Convert Wavelength
     return wave_vac
 
-def normaliseSpec(wave, spec, errSpec=None, polyOrder=3, indLib=None, maxErrVal=999.0, returnPolyFit=False):
+def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10, \
+                    continIncludesPartialPix=True, doPlot=False, verbose=False):
+    """
+    RH 18/10/2016
+
+    Calculate a simple equivalent width index for absorption lines.
+
+    Inputs:
+    =======
+    - spectrum: a spectrum class object
+    - index: an index class object
+    - contMethod: specify whether to use MEAN or MEDIAN averaging along continuum bandpass
+    - disp: spectrum dispersion in AA/pix. If None, automatically find it.
+    - round_prec: rounding precision for calculating disp
+    - continIncludesPartialPix: if bandpass falls within a pixel (which it will), do we include this pixel in
+                                the continuum calculation?
+    - verbose: print info to screen as running
+
+    Outputs:
+    =======
+    - index: the measured index
+    - indexVAR (optional)
+
+    """
+
+    # check for unifrm spacing
+    delta = checkSpacing(spectrum, index, round_prec=round_prec)
+    if type(disp)==type(None): disp=delta
+
+    # if no variance array
+    #if not hasattr(spectrum,'eflam'):
+    # loop over spectra of different ages
+    indVals=[] # init
+    for ns in xrange(len(spectrum.flam)):
+        # loop over continuum definitions
+        yAv=[] # init
+        xAv=[]
+        for j in xrange(index['ncont']):
+            # Find first and last data indices within bandpass
+            a = np.where(spectrum.lam > index['cont_start'][j])[0][0]
+            b = np.where(spectrum.lam < index['cont_stop'][j])[0][-1]
+            # Make sure the pixels containing the bandpass edges are included
+            if (index['cont_start'][j] - spectrum.lam[a-1]) < (spectrum.lam[a] - index['cont_start'][j]):
+                a -= 1
+            if (index['cont_stop'][j] - spectrum.lam[b]) > (spectrum.lam[b+1] - index['cont_stop'][j]):
+                b += 1
+
+            # Multiplicative factors for start and end pixels
+            Cstart_c = (spectrum.lam[a] - index['cont_start'][j] + 0.5*disp)/disp  
+            Cend_c = (index['cont_stop'][j] - spectrum.lam[b] + 0.5*disp)/disp 
+
+            # make weighted continuum 
+            wCont = np.ones_like(spectrum.flam[ns][a:b+1])
+            wCont[0]=Cstart_c
+            wCont[-1]=Cend_c
+            wCsum = np.sum(wCont)
+                        
+            # take average
+            if contMethod=='mean':
+                # use (weighted) mean
+                yAv.append(np.sum(spectrum.flam[ns][a:b+1]*wCont)/wCsum)
+                xAv.append(np.sum(spectrum.lam[a:b+1]*wCont)/wCsum)
+            elif contMethod=='median':
+                yAv.append(np.median(spectrum.flam[ns][a:b+1]))
+                xAv.append(np.median(spectrum.lam[a:b+1]))
+            else:
+                raise ValueError("contMethod not understood")
+
+        assert len(yAv)==2, "Can't calculate simple index when More than 2 continuum regions defined."
+        # RH: fractional pixels not correctly included in continuum fit - used as whole pixels
+
+        # calc linear continuum: y=mx+c using simple simultaneous equn solution
+        gradient = (yAv[0]-yAv[1]) / (xAv[0]-xAv[1])
+        slope    = yAv[0]-gradient*xAv[0]
+
+        #######################################
+        # Calculate the index
+        assert index['nfeat']==1, "Cannot calculate simple index for index with more than one feature definition."
+        # init
+        ind = 0.; ind_var_tot = 0.
+        ind_var_1 = 0.; ind_var_2 = 0.
+        
+        # Find first and last data indices within bandpass
+        a = np.where(spectrum.lam > index['ind_start'])[0][0]
+        b = np.where(spectrum.lam < index['ind_stop'])[0][-1]
+        # Determine which pixel is closest to start and end of bandpass
+        # RH doc: determine if a,b pixels currently overlap with bandpass edges or not
+        # if not, extend a,b so that they do. 
+        if (index['ind_start'] - spectrum.lam[a-1]) < (spectrum.lam[a] - index['ind_start']):
+            a -= 1
+        if (index['ind_stop'] - spectrum.lam[b]) > (spectrum.lam[b+1] - index['ind_stop']):
+            b += 1
+        # Multiplicative factors for start and end pixels
+        Cstart_c = (spectrum.lam[a] - index['ind_start'] + 0.5*disp)/disp  
+        Cend_c = (index['ind_stop'] - spectrum.lam[b] + 0.5*disp)/disp 
+
+        contNormSubSpec = 1.0 - spectrum.flam[ns][a:b+1] / (gradient*spectrum.lam[a:b+1] + slope)
+
+
+        contNormSubSpec[0] *= Cstart_c
+        contNormSubSpec[-1] *= Cend_c
+        indVals.append(disp*np.sum(contNormSubSpec))
+        
+    return np.array(indVals)
+
+
+def checkSpacing(spectrum, index, round_prec=10):
+    """
+    Check for uniform wavelength spacing. Code taken from SZ's index calculator
+    """
+    # check uniform spacing of data in wavelegth
+    data_loc_start = np.where(spectrum.lam > np.min(index['cont_start']))[0]
+    data_start = data_loc_start[data_loc_start.argmin()]#spectrum.lam[data_loc_start].argmin()
+    data_loc_stop = np.where(spectrum.lam < np.max(index['cont_stop']))[0]
+    data_stop = data_loc_stop[data_loc_stop.argmax()]
+    deltas = np.round(spectrum.lam[data_start+1:data_stop]-spectrum.lam[data_start:data_stop-1],round_prec)
+    delta = np.median(deltas)
+    
+    assert np.all(deltas==delta), "Wavelength spacing not uniform"
+    return delta
+
+
+def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
+    """
+    Function to calculate absorption line index strength using inverse variance weighting
+
+    -Code originally written by S. Zieleniewski, adopting
+    the Cenarro 2001 method of variance weighted fitting.
+    -Later adopted by R. Houghton. 
+
+    Inputs:
+        spectrum: a spectrum class object 
+        index: an indlib class from indexTools.py
+        disp: float - spectral dispersion [A/pixel], NOT anythign to do with spectral resolution!
+        round_prec: precision for rounding wavelengths.
+
+
+    Outputs:
+        ind: value of chosen index
+        ind_var (optional): variance on index measurement if spectrum class has variance defined
+
+    """
+    # check for unifrm spacing
+    delta = checkSpacing(spectrum, index, round_prec=round_prec)
+    if type(disp)==type(None): disp=delta
+    # init
+    indices = np.zeros(len(spectrum.flam),dtype=float)
+    index_vars = np.zeros_like(indices)
+    # loop over spectra and calc indices
+    for spec in xrange(len(spectrum.flam)):
+
+        SED = np.column_stack((spectrum.lam, spectrum.flam[spec]))
+        if hasattr(spectrum, 'eflam'):
+            var_SED = np.column_stack((spectrum.lam, spectrum.eflam[spec]**2.0)) # make variance array
+        else:
+            var_SED = None
+
+        #Method for calculating pseudo-continuum using equations from
+        #Cenarro et al (2001) Appendix A.
+
+        # RH doc: fit the continuum according to Eqs A11-A19
+        # If no variance array, no varaince weighting (i.e. use VAR=1.0 for everything)
+        eps1, eps2, eps3, eps4, eps5 = 0., 0., 0., 0., 0.
+        if var_SED is None:
+            for j in xrange(index['ncont']):
+                #Find first and last data indices within bandpass
+                a = np.where(SED[:,0] > index['cont_start'][j])[0][0]
+                b = np.where(SED[:,0] < index['cont_stop'][j])[0][-1]
+                #Determine which pixel is closest to start and end of bandpass
+                if (index['cont_start'][j] - SED[a-1,0]) < (SED[a,0] - index['cont_start'][j]):
+                    a -= 1
+                if (index['cont_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['cont_stop'][j]):
+                    b += 1      
+
+                # RH doc: make a copy of the whole pixels in bandpass
+                vals = np.copy(SED[a:b+1,:])
+
+                e1 = np.ones(len(vals[:,0]))
+                eps1 += np.sum(e1)            
+                e2 = vals[:,0]
+                eps2 += np.sum(e2)           
+                e3 = vals[:,0]**2
+                eps3 += np.sum(e3)            
+                e4 = vals[:,1]
+                eps4 += np.sum(e4)            
+                e5 = vals[:,0]*vals[:,1]
+                eps5 += np.sum(e5)
+
+            delta = eps1*eps3 - eps2**2
+            alpha1 = (1/float(delta))*(eps3*eps4 - eps2*eps5)
+            alpha2 = (1/float(delta))*(eps1*eps5 - eps2*eps4)
+        # RH doc: doesn't look like fractional pixels included in continuum fit
+
+        # If variance array exists, use it:
+        elif var_SED is not None:
+            for j in xrange(index['ncont']):
+                #Find first and last data indices within bandpass
+                a = np.where(SED[:,0] > index['cont_start'][j])[0][0]
+                b = np.where(SED[:,0] < index['cont_stop'][j])[0][-1]
+                #Determine which pixel is closest to start and end of bandpass
+                if (index['cont_start'][j] - SED[a-1,0]) < (SED[a,0] - index['cont_start'][j]):
+                    a -= 1
+                if (index['cont_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['cont_stop'][j]):
+                    b += 1      
+
+                vals = np.copy(SED[a:b+1,:])
+                err_vals = np.copy(var_SED[a:b+1,:])
+
+                e1 = np.ones(len(vals[:,0]))/err_vals[:,1]
+                eps1 += np.sum(e1)            
+                e2 = vals[:,0]/err_vals[:,1]
+                eps2 += np.sum(e2)            
+                e3 = vals[:,0]**2/err_vals[:,1]
+                eps3 += np.sum(e3)            
+                e4 = vals[:,1]/err_vals[:,1]
+                eps4 += np.sum(e4)            
+                e5 = vals[:,0]*vals[:,1]/err_vals[:,1]
+                eps5 += np.sum(e5)
+
+            delta = eps1*eps3 - eps2**2
+            alpha1 = (1/float(delta))*(eps3*eps4 - eps2*eps5)
+            alpha2 = (1/float(delta))*(eps1*eps5 - eps2*eps4)
+
+##            #Test to check that continua works
+##            xs = np.arange(cont[0], cont[-1], 1)
+##            ys = alpha2*xs + alpha1
+##            pl.plot(SED[:,0], SED[:,1], 'k-', xs, ys, 'r--')
+##            pl.show()
+
+        # Calculate the index
+        # init
+        ind = 0.; ind_var_tot = 0.
+        ind_var_1 = 0.; ind_var_2 = 0.
+        for j in xrange(index['nfeat']):
+            #Find first and last data indices within bandpass
+            a = np.where(SED[:,0] > index['ind_start'][j])[0][0]
+            b = np.where(SED[:,0] < index['ind_stop'][j])[0][-1]
+            #Determine which pixel is closest to start and end of bandpass
+            # RH doc: determine if a,b pixels currently overlap with bandpass edges or not
+            # if not, extend a,b so that they do. 
+            if (index['ind_start'][j] - SED[a-1,0]) < (SED[a,0] - index['ind_start'][j]):
+                a -= 1
+            if (index['ind_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['ind_stop'][j]):
+                b += 1
+            # Multiplicative factors for start and end pixels
+            Cstart_c = (SED[a,0] - index['ind_start'][j] + 0.5*disp)/disp  
+            Cend_c = (index['ind_stop'][j] - SED[b,0] + 0.5*disp)/disp 
+
+            Cvals = SED[a:b+1,:]
+
+            contys = alpha2*Cvals[:,0] + alpha1
+            Ccontvals = np.column_stack((Cvals[:,0],contys))
+
+            array = (1-Cvals[:,1]/Ccontvals[:,1])
+            array[0] *= Cstart_c
+            array[-1] *= Cend_c
+            value = disp*np.sum(array)
+            ind += value
+
+            ###ERRORS:
+            if var_SED is not None:
+                #Index error:
+                Cerrvals = var_SED[a:b+1,:]
+
+                ind_cont_var = np.zeros(len(Ccontvals),dtype=float)
+                #Loop over continuum feature pixels
+                for x in xrange(len(ind_cont_var)): 
+                    #Calculate continuum variance:
+                    Cvar_cont = 0.
+                    for i in xrange(index['ncont']):
+                        #Find first and last data indices within bandpass
+                        ia = np.where(SED[:,0] > index['cont_start'][i])[0][0]
+                        ib = np.where(SED[:,0] < index['cont_stop'][i])[0][-1]
+                        #Determine which pixel is closest to start and end of bandpass
+                        if (index['cont_start'][i] - SED[ia-1,0]) < (SED[ia,0] - index['cont_start'][i]):
+                            ia -= 1
+                        if (index['cont_stop'][i] - SED[ib,0]) > (SED[ib+1,0] - index['cont_stop'][i]):
+                            ib += 1      
+                        #Extract relevent region of SED and variance SED
+                        contvals = np.copy(SED[ia:ib+1,:])
+                        var_contvals = np.copy(var_SED[ia:ib+1,:])
+                        #Apply equation
+                        contsum = ((1/delta)*((1/var_contvals[:,1])*eps3 - (contvals[:,0]/var_contvals[:,1])*eps2)\
+                                  + (Ccontvals[x,0]/delta)*((contvals[:,0]/var_contvals[:,1])*eps1\
+                                                            - (1/var_contvals[:,1])*eps2))**2.*var_contvals[:,1]
+                        Cvar_cont += np.sum(contsum)
+                    ind_cont_var[x] = Cvar_cont
+
+                Carray_var_1 = (Ccontvals[:,1]**2*Cerrvals[:,1] + Cvals[:,1]**2*ind_cont_var)/\
+                             Ccontvals[:,1]**4.
+                Carray_var_1[0] *= Cstart_c
+                Carray_var_1[-1] *= Cend_c
+                ind_var_1 += np.sum(Carray_var_1)
+
+                #For part 2 of equation which includes covariance matrix:
+                #Loop over pixels in spectral feature
+                for y in xrange(len(Cvals[:,0])):
+                    #Loop over first spectral feature
+                    for z in xrange(index['nfeat']):
+                        #Find first and last data indices within bandpass
+                        iia = np.where(SED[:,0] > index['ind_start'][z])[0][0]
+                        iib = np.where(SED[:,0] < index['ind_stop'][z])[0][-1]
+                        #Determine which pixel is closest to start and end of bandpass
+                        if (index['ind_start'][z] - SED[iia-1,0]) < (SED[iia,0] - index['ind_start'][z]):
+                            iia -= 1
+                        if (index['ind_stop'][z] - SED[iib,0]) > (SED[iib+1,0] - index['ind_stop'][z]):
+                            iib += 1
+                        #Multiplicative factors for start and end pixels
+                        Fstart_c = (SED[iia,0] - index['ind_start'][z] + 0.5*disp)/float(disp)
+                        Fend_c = (index['ind_stop'][z] - SED[iib,0] + 0.5*disp)/float(disp)
+
+                        Fvals = SED[iia:iib+1,:]
+                        Fcontys = alpha2*Fvals[:,0] + alpha1
+                        Fcontvals = np.column_stack((Fvals[:,0],Fcontys))
+                        #Loop over pixels in second spectral feature
+                        for zz in xrange(len(Fvals[:,0])):
+                            cov_part = ((1/delta**2)*(eps1*eps3*eps3-eps2*eps2*eps3))+\
+                                       ((1/delta**2)*(eps2*eps2*eps2-eps1*eps2*eps3))*(Cvals[y,0] + Fvals[zz,0])+\
+                                       ((1/delta**2)*(eps1*eps1*eps3-eps1*eps2*eps2))*(Cvals[y,0]*Fvals[zz,0])
+
+                            part_2_num = (Cvals[y,1]*Fvals[zz,1]*cov_part)/(Ccontvals[y,1]**2*Fcontvals[zz,1]**2)
+                            #edge pixel factors
+                            if y == 0.:
+                                part_2_num *= Cstart_c
+                            if zz == 0.:
+                                part_2_num *= Fstart_c
+                            if y == (len(Cvals[:,0])-1):
+                                part_2_num *= Cend_c
+                            if zz == (len(Fvals[:,0])-1):
+                                part_2_num *= Fend_c
+
+                            ind_var_2 += part_2_num
+
+                ind_var_tot = disp**2*(ind_var_1 + ind_var_2)
+
+        if verbose: print index['name']+' = %.3f pm %.3f Angstroms' % (ind, np.sqrt(ind_var_tot))
+        indices[spec] = ind
+        index_vars[spec] = ind_var_tot
+
+    rlist = indices
+    if var_SED is not None:
+        rlist = [indices, np.sqrt(index_vars)]
+
+    return rlist 
+
+    
+def normaliseSpec(lam, flam, eflam=None, polyOrder=3, indLib=None, maxErrVal=999.0, returnPoly=False):
     """
     Normalise spectrum continuum to one, avoiding abs lines (defined by indLib)
+
+    Inputs:
+      lam     - wavelength array (1D)
+      flam    - flux array (1D)
+      [eflam] - flux error array (optional; 1D) 
+      [polyOrder]  - polynomial order to fit (default value set)
+      [indLib]     - index librray of absorption features to omit when fitting polynomial (optional)
+      [returnPoly] - return the polynomial as well as normed flux (and normed flux error if passed eflam)
+
+    Returns:
+      nflam     - continuum normalised flux array (1D)
+      [neflam]  - continuum normalised flux error array (if eflam given; 1D)
+      [polyFit] - polynomial fitted to continuum (if returnPoly set; spectrum, not coefs)
     
     """
-
-    # scale wave to be between -1 and 1
-    x = 2.0*(wave-wave.min())/(wave.max()-wave.min()) - 1.0
-
-    xfit = np.copy(x)
-    wfit = np.copy(wave)
-    yfit = np.copy(spec)
-    if type(errSpec)!=type(None): efit = np.copy(errSpec)
     
+    # scale wave to be between -1 and 1
+    x = 2.0*(lam-lam.min())/(lam.max()-lam.min()) - 1.0
+
+    nflam  = []
+    pfits  = []
+
+    # loop over spectra, normalising
+
+    # init
+    xfit = np.copy(x)
+    wfit = np.copy(lam)
+    yfit = np.copy(flam)
+    if eflam is not None: efit = np.copy(eflam)
+
     # remove nans and err<0.0
-    if type(errSpec)!=type(None):
-        loc=np.where((~np.isfinite(spec)) | (~np.isfinite(errSpec)) | (errSpec<=0.0))
+    if eflam is not None:
+        loc=np.where((~np.isfinite(flam)) | (~np.isfinite(eflam)) | (eflam<=0.0))
     else:
-        loc=np.where(~np.isfinite(spec))  
-    good = np.ones_like(spec, dtype=np.bool)
+        loc=np.where(~np.isfinite(flam))  
+    good = np.ones_like(lam, dtype=np.bool)
     good[loc]=False
     keep = np.where(good)
     xfit = xfit[keep]; wfit = wfit[keep]; yfit = yfit[keep];
-    if type(errSpec)!=type(None): efit=efit[keep]
-    
+    if eflam is not None: efit=efit[keep]
+
     # remove abs lines from poly fit
     if type(indLib)!=type(None):
         locs=[]
@@ -1454,29 +1645,29 @@ def normaliseSpec(wave, spec, errSpec=None, polyOrder=3, indLib=None, maxErrVal=
         good = np.ones_like(xfit, dtype=np.bool)
         good[locs] = False
         keep = np.where(good)
-        xfit=xfit[keep]
-        wfit=wfit[keep]
-        yfit=yfit[keep]
-        if type(errSpec)!=type(None): efit=efit[keep]
+        xfit = xfit[keep]
+        wfit = wfit[keep]
+        yfit = yfit[keep]
+        if eflam is not None: efit=efit[keep]
 
     # fit poly
-    if type(errSpec)!=type(None):
+    if eflam is not None:
         coef = cheby.chebfit(xfit, yfit, deg=polyOrder, w=1.0/efit**2.0) # variance weight poly fit
     else:
         coef = cheby.chebfit(xfit, yfit, deg=polyOrder)
-        
+
     polyFit = cheby.chebval(x,coef)
 
     # normalise 
-    normSpec = spec/polyFit
-    rlist = [normSpec]
+    nflam=flam/polyFit
 
     # return extra arrays
-    if type(errSpec)!=type(None):
-        normErrSpec = errSpec/polyFit
-        rlist.append(normErrSpec)
-        
-    if returnPolyFit: rlist.append(polyFit)
+    if eflam is not None:
+        neflam = eflam/polyFit
+
+    rlist = [nflam]
+    if eflam is not None: rlist.append(neflam)
+    if returnPoly: rlist.append(polyFit)
 
     return rlist
-    
+        

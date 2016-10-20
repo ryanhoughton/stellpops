@@ -4,7 +4,7 @@ import string as s
 import re
 import pdb
 import os
-import specTools as t
+from stellpops import specTools as t
 from os.path import expanduser
 
 L_sun = 3.826E33 # the L_sun defined by BC03 in erg/s
@@ -351,7 +351,7 @@ def loadBC03indexfile(file, keyline=28, startline=31, verbose=False):
 
 
 def loadBC03ind(indpath="~/z/data/stellar_pops/BC03/models", \
-                tracks="Padova1994", imf="salpeter", glob="*hr*ssp.6lsindx_sed", \
+                tracks="Padova1994", imf="salpeter", glob="*hr*ssp.[6,7]lsindx_sed", \
                 Zdict = {"m22":0.0001,"m32":0.0004,"m42":0.004,"m52":0.008, \
                 "m62":0.02, "m72":0.05}, Zind=3, keyline=28, startline=31):
 
@@ -373,13 +373,17 @@ def loadBC03ind(indpath="~/z/data/stellar_pops/BC03/models", \
 
     files, nfiles = t.findfiles(expanduser(indpath)+"/"+tracks+"/"+imf+"/"+glob)
 
-    indicies = {}
+    indices = {}
     for n in range(nfiles):
         # get the metallicity
         Zcode = files[n].split("_")[Zind]
-        indicies[str(Zdict[Zcode])] = loadBC03indexfile(files[n], keyline=keyline, startline=startline)
+        key = str(Zdict[Zcode])
+        if key in indices:
+            indices[key].update(loadBC03indexfile(files[n], keyline=keyline, startline=startline))
+        else:
+            indices[key] = loadBC03indexfile(files[n], keyline=keyline, startline=startline)
 
-    return indicies
+    return indices
 
 def testChabSalpIMF(f='f625w', z=0.545):
     '''

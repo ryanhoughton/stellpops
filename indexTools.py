@@ -1,7 +1,7 @@
 import pylab as pl
 import numpy as np
 import atpy as ap
-from stellpops.specTools import air2vac
+from stellpops.specTools import air2vac, vac2air
 import pdb
 import copy
 
@@ -11,9 +11,9 @@ prettyPrint = {'CN_1':r'CN$_1$', \
                'Ca4227':r'Ca$_{4227}$', \
                'G4300':r'G4300', \
                'Fe4383':r'Fe$_{4383}$', \
-               'Ca4455':r'Ca$_4455$', \
-               'Fe4531':r'Fe$_4531$', \
-               'Fe4668':r'Fe$_{4668}$', \
+               'Ca4455':r'Ca$_{4455}$', \
+               'Fe4531':r'Fe$_{4531}$', \
+               'Fe4668':r'C2$_{4668}$', \
                'H_beta':r'H$\beta$', \
                'Fe5015':r'Fe$_{5015}$', \
                'Mg_1':r'Mg$_1$', \
@@ -30,6 +30,10 @@ prettyPrint = {'CN_1':r'CN$_1$', \
                'Hdelta_F':r'H$\delta_F$', \
                'Hgamma_A':r'H$\gamma_A$', \
                'Hgamma_F':r'H$\gamma_F$'}
+
+
+# from Worthey and Ottaviani, 1997, Table 8, Wavelength in AA and FWHM in AA.
+lickResolutions=[[4000,4400,4900,5400,6000],[11.5, 9.2, 8.4, 8.4, 9.8]]
 
 class ind(dict):
     """
@@ -139,7 +143,6 @@ class ind(dict):
         if autoy:
             gca=pl.gca()
             ymin, ymax = gca.get_ylim()
-
 
         if justLine:
             for nf in xrange(self['nfeat']):
@@ -371,7 +374,8 @@ class indlib():
 
 def loadLickIndicesAir(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt",verbose=False):
     """
-    Load the Lick indices from Worthey's website (http://astro.wsu.edu/worthey/html/index.table.html, air wavelengths). These are a compilation from Trager et al. (1998) and Worthey & Ottaviani (1997). They are the same as used in TMJ10 models. 
+    Load the Lick indices from Worthey's website (http://astro.wsu.edu/worthey/html/index.table.html, air wavelengths).
+    These are a compilation from Trager et al. (1998) and Worthey & Ottaviani (1997). They are the same as used in TMJ10 models. 
 
     """
 
@@ -410,30 +414,86 @@ def getCvD12Indices(verbose=False):
     return indlib(table=loadCvD12IndicesVac(),verbose=verbose)
 
 
-def calcMeanFe(Fe5270, Fe5335, eFe5270=None, eFe5335=None):
+def calcMeanFe(Fe1, Fe2, Fe3=None, eFe1=None, eFe2=None, eFe3=None):
+    """
+    Wrapper for choosing between mean2Fe and mean3Fe
+    """
+    if Fe3 is None:
+        res = calcMean2Fe(Fe1, Fe2, eFe5270=eFe1, eFe5335=eFe2)
+    else:
+        res = calcMean3Fe(Fe1, Fe2, Fe3, eFe5270=eFe1, eFe5335=eFe2, eFe5406=eFe3)
+    return res
+
+def calcMean2Fe(Fe5270, Fe5335, eFe5270=None, eFe5335=None):
     meanFe = 0.5*(Fe5270+Fe5335)
     if (eFe5270 is not None) & (eFe5335 is not None):
-        emeanFe = 0.5*(eFe5270+eFe5335)
+        emeanFe = np.sqrt(0.25*eFe5270**2.0 + 0.25*eFe5335**2.0) 
         rlist = [meanFe, emeanFe]
     else:
         rlist = meanFe
     return rlist
 
-def calcMgFe(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
+def calcMean3Fe(Fe5270, Fe5335, Fe5406, eFe5270=None, eFe5335=None, eFe5406=None):
+    mean3Fe = (Fe5270+Fe5335+Fe5406)/3.
+    if (eFe5270 is not None) & (eFe5335 is not None) & (eFe5406 is not None):
+        emean3Fe = np.sqrt((1./6.)*eFe5270**2.0 + (1./6.)*eFe5335**2.0 + (1./6.)*eFe5406**2.0) 
+        rlist = [mean3Fe, emean3Fe]
+    else:
+        rlist = mean3Fe
+    return rlist
+
+
+def calcMgFe(Mgb, Fe1, Fe2, Fe3=None, eMgb=None, eFe1=None, eFe2=None, eFe3=None):
+    """
+    Wrapper for choosing between MgFe2 and MgFe3
+    """
+    if Fe3 is None:
+        res = calcMgFe2(Mgb, Fe1, Fe2, eMgb=eMgb, eFe5270=eFe1, eFe5335=eFe2)
+    else:
+        res = calcMgFe3(Mgb, Fe1, Fe2, Fe3, eMgb=eMgb, eFe5270=eFe1, eFe5335=eFe2, eFe5406=eFe3)
+    return res
+
+def calcMgFe2(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
     """
     Return [MgFe] from Gonzalez 1993
 
     And error if values passed
     """
-    avFe = calcMeanFe(Fe5270, Fe5335)
+    if (eFe5270 is not None) & (eFe5335 is not None):
+        avFe, eavFe = calcMean2Fe(Fe5270, Fe5335, eFe5270=eFe5270, eFe5335=eFe5335)
+    else:
+        avFe = calcMean2Fe(Fe5270, Fe5335)
     a=0.5
     b=0.5
     MgFe = np.sqrt(Mgb * avFe)
     if (eMgb is not None) & (eFe5270 is not None) & (eFe5335 is not None):
-        eMgFe = 0.5 / (MgFe) * (eMgb/2.0*avFe + Mgb/2.0*(a*eFe5270+b*eFe5335))
+        # see RH note book 28/9/16
+        eMgFe = (np.sqrt(0.25*(eMgb/Mgb)**2.0 + 0.25*(eavFe/avFe)**2.0)) * MgFe # relative error calc, scaled up by value
         rlist = [MgFe, eMgFe]
     else:
         rlist = MgFe
+        
+    return rlist
+
+def calcMgFe3(Mgb, Fe5270, Fe5335, Fe5406, eMgb=None, eFe5270=None, eFe5335=None, eFe5406=None):
+    """
+    Return modified [MgFe] akin to  Gonzalez 1993
+
+    And error if values passed
+    """
+    if (eFe5270 is not None) & (eFe5335 is not None) & (eFe5406 is not None):
+        av3Fe, eav3Fe = calcMean3Fe(Fe5270, Fe5335, Fe5406, eFe5270=eFe5270, eFe5335=eFe5335, eFe5406=eFe5406)
+    else:
+        av3Fe = calcMean3Fe(Fe5270, Fe5335, Fe5406)
+    a=0.5
+    b=0.5
+    MgFe3 = np.sqrt(Mgb * av3Fe)
+    if (eMgb is not None) & (eFe5270 is not None) & (eFe5335 is not None) & (eFe5406 is not None):
+        # see RH note book 28/9/16
+        eMgFe3 = (np.sqrt(0.25*(eMgb/Mgb)**2.0 + 0.25*(eavFe/avFe)**2.0)) * MgFe # relative error calc, scaled up by value
+        rlist = [MgFe3, eMgFe3]
+    else:
+        rlist = MgFe3
         
     return rlist
 
@@ -450,6 +510,7 @@ def calcMgFePrime(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
 
     if (eMgb is not None) & (eFe5270 is not None) & (eFe5335 is not None):
         eMgFeP = 0.5 / (MgFeP) * (eMgb/2.0*avFe + Mgb/2.0*(a*eFe5270+b*eFe5335))
+        raise ValueError("Error propagation needs correcting, see above and note book 28/9/16")
         rlist = [MgFeP, eMgFeP]
     else:
         rlist = MgFeP
