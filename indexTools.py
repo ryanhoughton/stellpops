@@ -268,10 +268,14 @@ class indlib():
     def add_simple_indices_via_table(self, verbose=False):
         """
         Add multiple indices through a table
-
-        Assume no resolution info in table
-        
+                
         """
+
+        # ERROR this doesn't work as None has no length, breaking atpy
+        # add resol if not in table
+        #if self.table.keys().count('resol')==0:
+        #    resol = [None for x in xrange(len(self.table))]
+        #    self.table.add_column('resol', resol)
 
         nind = len(self.table.name)
         current_index=None
@@ -279,13 +283,15 @@ class indlib():
             if self.table.name[ni] != '-':
                 self.add_simple_index(name=self.table.name[ni], ind_start=self.table.ind_start[ni], ind_stop=self.table.ind_stop[ni], \
                                       blue_start=self.table.blue_start[ni], blue_stop=self.table.blue_stop[ni], \
-                                      red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], verbose=verbose)
+                                      red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], \
+                                      verbose=verbose) # resol=self.table.resol[ni], 
                 current_index = self.table.name[ni]
             else:
                 assert current_index is not None, "No index preceeding index with name=='-'"
                 self.augment_index(name=current_index, ind_start=self.table.ind_start[ni], ind_stop=self.table.ind_stop[ni], \
                                    blue_start=self.table.blue_start[ni], blue_stop=self.table.blue_stop[ni], \
-                                   red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], verbose=verbose)
+                                   red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], \
+                                   verbose=verbose) # resol=self.table.resol[ni], 
 
     def add_simple_index_via_dict(self, index_dict, verbose=False):
         """
@@ -393,7 +399,7 @@ class indlib():
         return newLib
         
 
-def loadLickIndicesAir(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt",verbose=False):
+def loadLickIndicesAir(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt", atLickRes=False, verbose=False):
     """
     Load the Lick indices from Worthey's website (http://astro.wsu.edu/worthey/html/index.table.html, air wavelengths).
     These are a compilation from Trager et al. (1998) and Worthey & Ottaviani (1997). They are the same as used in TMJ10 models. 
@@ -402,9 +408,10 @@ def loadLickIndicesAir(filename="/home/houghton/z/data/stellar_pops/lickIndicesA
 
     tab = ap.Table(filename, type='ascii')
     inds = indlib(table=tab, verbose=verbose)
+    if atLickRes: inds = addLickRes2IndLib(inds)
     return inds
 
-def loadLickIndicesVac(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt",verbose=False):
+def loadLickIndicesVac(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt", atLickRes=False, verbose=False):
     """
     Like above but convert to vacuum wavelengths
     """
@@ -413,8 +420,9 @@ def loadLickIndicesVac(filename="/home/houghton/z/data/stellar_pops/lickIndicesA
     for nli in xrange(nline):
         for nci in xrange(1,ncol-2):
             table[nli][nci] = air2vac(table[nli][nci],verbose=verbose)
-
     inds = indlib(table=table, verbose=verbose)
+    # inset Lick resolutions - probably should be done at air wavelengths but surely tiny tiny error
+    if atLickRes: inds = addLickRes2IndLib(inds)
     return inds
 
 def getLickIndices(verbose=False):

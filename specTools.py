@@ -747,17 +747,20 @@ class spectrum:
         if index['resol'] is not None:
             meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
             currentFWHM = self.calcResolution(meanWave)
-            pdb.set_trace()
+            outputFWHM = index['resol']
+            newSpec = cutAndConvolve(self, index, currentFWHM, outputFWHM, verbose=False)
+        else:
+            newSpec=self
         
         # loop through various methods
         if method==0:
-            vals = calcSimpleIndex(self, index, contMethod='mean', verbose=verbose)
+            vals = calcSimpleIndex(newSpec, index, contMethod='mean', verbose=verbose)
         elif method==1:
-            vals = calcSimpleIndex(self, index, contMethod='median', verbose=verbose)
+            vals = calcSimpleIndex(newSpec, index, contMethod='median', verbose=verbose)
         elif method==2:
             raise ValueError("Code not written")
         elif method==3:
-            vals = calcCenarroIndex(self, index, disp=disp, round_prec=round_prec, verbose=verbose)
+            vals = calcCenarroIndex(newSpec, index, disp=disp, round_prec=round_prec, verbose=verbose)
         else:
             raise ValueError("Method not understood")
 
