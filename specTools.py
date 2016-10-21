@@ -14,7 +14,7 @@ from nearest import nearest as nn
 
 # globals
 
-c = 2997924580 # m/s
+c = 299792458.0 # m/s
 pc= 3.08568025E16
 d_sun = 149597887.5e3 # m
 
@@ -63,6 +63,7 @@ class spectrum:
 
         """
         Inputs:
+        -------
            lam     - the 1D array of wavelengths (becomes self.lam)
            lamspec - the (1D, 2D or 3D) array of fluxes on the specified lambda grid (becomes self.flam)
            errlamspec - standard deviation for pixels in lamspec (becomes self.eflam)
@@ -78,13 +79,18 @@ class spectrum:
            resolution - 2 element list of
                [0]: spectral R=lam/dlam (FWHM),
                [1]: resolution FWHM (val/tuple/dict) in AA
-                    - may be single value or tuple defining starting and final resolutions.
-                    - may be a dict for 'visible' and 'nir' wavelengths if multiple libs used
+                    - may be single value for the FWHM in AA
+                    - may be list/tuple defining starting and final resolution FWHM in AA.
+                    - may be a dict for 'visible' and 'nir' wavelengths if multiple libs used; the dict value may be single (FWHM),
+                      or tuple as above
                Either may be None, depending on how the models/libs are defined.
+               
+               SEE calcResolution BELOW FOR MORE INFO!!!
                
            userdict- add extra user-defined tags to the spectrum, such as airmass, water vapour etc.
 
         Notes:
+        ------
         There are 3 ways to inialise a spectrum class:
             1. With a 1D lam/mu and a 1D spectrum (single spec mode).
                  - Magnitudes are returned as single values
@@ -193,6 +199,106 @@ class spectrum:
             keys = userdict.keys()
             for key in keys:
                 setattr(self, key, userdict[key])
+
+    def calcResolution(self, wave):
+        """
+        RH 21/10/16
+
+        Calculating the spectral resolution for different libraries at different wavelengths is complicated.
+        This function attempts to use the 'self.resolution' variable with a given wavelength to return a resolution
+        (R=lam/dlam) in AA.
+
+        There are strict rules for the format of self.resolution:
+        1) It must be a 2-element list
+        2) The first element refers to a single R=lam/dlam value for ALL wavelengths.
+           In this case, the second element is None!
+        3) The second element can be a two element list or tuple.
+           In this case, the first element of the list should be None!
+           E.g. [None, [3.1, 3.4]] as in BC03
+           
+           The two numbers refer to the starting and finishing FWHM resolution in AA.
+           The value at a given wavelength is then calculated from these values by linear interpolation.
+        4) The second element can be a dictionary.
+           Then the fist element should be None!
+           E.g. [None, {'3200,9500':[3.1,3.5]}]
+
+           The dictionary keyword gives starting and finishing wavelengths in AA
+           The dictionary value can be a single value - FWHM in AA
+           or it can be a 2-element list/tuple defining the starting and finishing resolution FWHMs in AA.
+           As before, linear interpolation is used to estimate the resolution at the given wavelength.
+
+        Note that there is currently no way to define R=lam/dlam for different wavelength ranges - only FWHM resolutions.
+           
+
+        Inputs:
+        - wave : the wavelength of interest
+
+        Outputs:
+        - FWHM : the resolution R=lam/dlam FWHM at the given wavelength 
+        
+        """
+        # make local copy for speed
+        R=self.resolution[0]
+        FWHM=self.resolution[1]
+
+        # helper functions
+        def interpFWHM(FWHM, wave, minlam=None, maxlam=None):
+            # using starting and ending resolutions,
+            # interpolate between
+            if minlam is None: minlam = self.lam.min()
+            if maxlam is None: maxlam = self.lam.max()
+            lamrange=maxlam-minlam
+            FWHMrange = FWHM[1]-FWHM[0]
+            resAA = (wave-minlam)/lamrange * FWHMrange + FWHM[0]
+            return resAA
+
+        ##########################
+        # start if, elif, etc loop
+        if R is not None:
+            # simple case - single R value
+            resAA = wave/r
+        elif (isinstance(FWHM,float) or isinstance(FWHM,int)):
+            # another simple case - single FWHM given
+            resAA = FWHM
+        elif ((isinstance(FWHM, list) or isinstance(FWHM,tuple)) and (len(FWHM)==2)):
+            # linearly interpolate between two values
+            resAA = interpFWHM(FWHM,wave)
+        elif (isinstance(FWHM,dict)):
+            # dict
+            keys = FWHM.keys()
+            nkeys=len(keys)
+            # cycle through keys / wavelength ranges
+            klams=[]
+            for k in keys:
+                # get wavelength range start/stop
+                slams = k.split(",")
+                lams=[]
+                for l in slams:
+                    lams.append(float(l))
+                klams.append(np.array(lams))
+            # now figure out which key is relevant wavelength
+            thisone=np.zeros(nkeys, dtype=np.int)
+            for n, kl in enumerate(klams):
+                if (wave >= kl.min()) & (wave <= kl.max()):
+                    thisone[n]=1
+            assert np.sum(thisone)==1, "Failed to find a suitable resolution for this wavelength"
+            # get key location
+            loc=np.where(thisone==1)[0]
+            k = keys[loc]
+            # start new if elif else loop
+            if isinstance(FWHM[k],float) or isinstance(FWHM[k],int):
+                # single value of resAA
+                resAA = FWHM
+            elif ((isinstance(FWHM[k], list) or (isinstance(FWHM[k],tuple))) and (len(FWHM[k])==2)):
+                # interp
+                resAA = interpFWHM(FWHM[k],wave, minlam=klams[loc].min(), maxlam=klams[loc].max())
+            else:
+                raise ValueError("Failed to understand dict type for this key")
+        else:
+            raise ValueError("Resolution type not understood.")
+        
+        # return resolution FWHM in AA
+        return resAA
 
     def calcmuspec(self, filter=False):
         """
@@ -358,7 +464,6 @@ class spectrum:
         lithro = ithro[loc]
         dmu = (self.mu[loc]-self.mu[loc+1]) # be sure to correct for uneven mu spacing
         lithro *= dmu/self.mu[loc] # divide by mu here as it occurs in integral - Hogg k-cor
-
         
         # calc mags
         specs = np.array(self.fmu)
@@ -479,7 +584,7 @@ class spectrum:
 
         return m2l
 
-    def gaussLamConvolve(self, sigma_lam, nsig=5.0, verbose=True):
+    def gaussLamConvolve(self, sigma_lam, nsig=5.0, overwrite=True, verbose=True):
         """
         Purpose: to convolve the spectrum with a Gaussian IN LAMBDA SPACE of known dispersion dispersion (AA)
                  NOTE: this replicates the effect of a poorer resolution spectrograph (dlam being fixed)
@@ -500,17 +605,19 @@ class spectrum:
         reg_spec=[]
         count=0
         for flam in self.flam:
-            reg_spec.append(interpolate(self.lam,flam,reg_lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear'))
+            count+=1
+            reg_spec.append(interpolate(self.lam,flam,reg_lam, fill_value=np.nan, \
+                                        bounds_error=False, method=1, kind='linear'))
             if verbose: print "Interpolated spec "+str(count)+" of "+str(len(self.flam))+" onto regular wavelength grid"
             
         # make kernel
         krange = np.ceil((sigma_lam*nsig)/min_dlam) # in units of min_dlam
-        kx = np.arange(-krange,krange)
+        kx = np.arange(-krange,krange+1) # need +1 here otherwise kernel is not even and it adds shift
         w = kx/(sigma_lam/min_dlam)
         ky = np.exp(-0.5*w**2.0)
         # normalise
         ky/=np.sum(ky)
-        
+
         # do convolution
         count=0
         creg_spec=[]
@@ -526,6 +633,9 @@ class spectrum:
             if verbose: print "Interpolated spec "+str(count)+" of "+str(len(creg_spec))+" onto regular wavelength grid"
 
         self.cflam=cspec
+
+        if overwrite:
+            self.flam = self.cflam
 
         return cspec
 
@@ -545,16 +655,20 @@ class spectrum:
         dloglam = np.log10(1.0 + velscale/c*1e3)
         nloglam = np.round((np.log10(self.lam.max())-np.log10(self.lam.min())) / dloglam)
         self.velscale=velscale
-        # calc dlam at longest wavelengths - coarsest vel resolution
+        
+        # calc regular loglam grid
         self.loglam = 10.0**np.linspace(np.log10(self.lam[0]), np.log10(self.lam[-1]), nloglam )
 
         count=0
         self.floglam=[]
         for flam in self.flam:
             count=count+1
-            self.floglam.append(interpolate(self.lam,flam,self.loglam, fill_value=np.nan, bounds_error=False, method=1, kind='linear'))
+            # interpolate onto loglam grid
+            self.floglam.append(interpolate(self.lam,flam,self.loglam, fill_value=np.nan, \
+                                            bounds_error=False, method=1, kind='linear'))
             if verbose: print "Interpolated spec "+str(count)+" of "+str(len(self.flam))
 
+        # if kernel not passed, create it.
         if losvd == None: # speed up if losvd passed
             dv = np.ceil(nsig*sigma/velscale) 
             nv = 2*dv + 1
@@ -628,6 +742,13 @@ class spectrum:
             ind_var (optional): variance on index measurement if spectrum class has variance defined
             
         """
+
+        # check the resolution
+        if index['resol'] is not None:
+            meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
+            currentFWHM = self.calcResolution(meanWave)
+            pdb.set_trace()
+        
         # loop through various methods
         if method==0:
             vals = calcSimpleIndex(self, index, contMethod='mean', verbose=verbose)
@@ -1244,6 +1365,55 @@ def air2vac(wave_air, useIDLcoef=True, verbose=False):
             fact = 1.0 + 6.4328e-5 + 2.94981e-2/(146.0 - sigma2) + 2.5540e-4/( 41.0 - sigma2)
         wave_vac[g] = wave_air[g]*fact      # Convert Wavelength
     return wave_vac
+
+def cutAndConvolve(longSpec, index, currentFWHM, outputFWHM, verbose=True):
+    """
+    RH 18/10/2016
+
+    In order to measure Lick/IDS indices, we need to convolve the spectra up to a particular resolution
+    and measure the index strength.
+
+    This code cuts out a part of the spectrum (red and blue continuum limits +- 5 sigma) and convolves
+    the spectrum with the given dispersion. It then returns this new, shorter, convolved spectrum.
+
+    Puzia et al 2004 Eq in Sec4.1 is useful
+
+    All convolutions done in lambda space, not velocity space.
+
+    Inputs:
+     - longSpec   : the spectrum which is to be cut and convolved
+     - index      : the index definition, used to cut spec to right size
+     - currentFWHM: the current spectral resolution (FWHM) in AA
+     - outputFWHM : the desired output resolution (FWHM) in AA
+     - verbose    : print stuff, can get anoying
+
+    """
+
+    # calc convolution kernel width, using Puzia+04 Eq
+    fac = np.sqrt(8.*np.log(2.0))
+    kernelFWHM = np.sqrt(outputFWHM**2.0 - currentFWHM**2.0)
+    kernelSigma=kernelFWHM/fac
+    if verbose: print "In FWHM="+str(currentFWHM)+", out FWHM="+str(outputFWHM)+", kernel FWHM="+str(kernelFWHM)
+
+    # define cut spectrum edges
+    cutlow = (index['blue_start'] - 5.0*kernelFWHM)
+    cuthigh= (index['red_stop'] + 5.0*kernelFWHM)
+
+    # cut spec
+    cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
+    assert len(cloc)!=0, "Found no matching wavelengths"
+    clam  = longSpec.lam[cloc]
+    cflam=[]
+    for s in longSpec.flam:
+        cflam.append(s[cloc])
+    cutSpec = spectrum(lam=clam, lamspec=cflam)
+
+    # convolve
+    cutSpec.gaussLamConvolve(kernelSigma, overwrite=True, verbose=verbose)
+
+    # return
+    return cutSpec
+    
 
 def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10, \
                     continIncludesPartialPix=True, doPlot=False, verbose=False):

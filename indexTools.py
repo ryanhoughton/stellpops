@@ -33,7 +33,8 @@ prettyPrint = {'CN_1':r'CN$_1$', \
 
 
 # from Worthey and Ottaviani, 1997, Table 8, Wavelength in AA and FWHM in AA.
-lickResolutions=[[4000,4400,4900,5400,6000],[11.5, 9.2, 8.4, 8.4, 9.8]]
+lickResolutions=np.array([[4000,4400,4900,5400,6000],[11.5, 9.2, 8.4, 8.4, 9.8]])
+lickResPolyFit=[1.23827561e-12,  -2.53065476e-08,   1.94910696e-04, -6.70562662e-01,   8.77800000e+02]
 
 class ind(dict):
     """
@@ -44,11 +45,27 @@ class ind(dict):
     """
 
     def __init__(self, ind_start=None, ind_stop=None, blue_start=None, blue_stop=None, red_start=None, red_stop=None, \
-                 name=None, verbose=False):
+                 resol=None, name=None, verbose=False):
         """
-        Initalise class
+        Initalise index class, used to calculate equivalent widths using two (blue and red) continuum bandpasses
+        and a (index) feature bandpass.
 
-        NOTE THAT CONT_START AND CONT_STOP ARE DEFINED INTERNALLY AND USED TO INITALISE (used for index calc)
+        The actual calculation of the index is left to a different tool (see specTools.py)
+
+        Inputs:
+        - ind_start : defines the (blue) start of the feature bandpass
+        - ind_stop  : defines the (red) end of the feature bandpass
+        - blue_start: defines the (blue) start of the blue continuum bandpass
+        - blue_stop : defines the (red) end of the blue continuum bandpass
+        - red_start : defines the (blue) start of the red continuum bandpass
+        - resol     : the resolution (FWHM) in AA that the index should be measured at. This is normally set to None
+                      (resolution of spectrum is not changed) unless the index is to be calculated on the Lick/IDS system.
+        - name      : the name of the index
+        - verbose   : print stuff to screen, which can get annoying.
+    
+
+        NOTE THAT CONT_START AND CONT_STOP ARE DEFINED INTERNALLY (used for index calc). 
+        
         """
 
         assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
@@ -64,6 +81,7 @@ class ind(dict):
                 'blue_start':blue_start, 'blue_stop':blue_stop, 'red_start':red_start, 'red_stop':red_stop}
         nfeat = {'nfeat':1}
         ncont = {'ncont':2}
+        resol = {'resol':resol}
         ID = {'name':name}
         t = {'simpleIndex': True}
         
@@ -71,6 +89,7 @@ class ind(dict):
         self.update(cont)
         self.update(ncont)
         self.update(nfeat)
+        self.update(resol)
         self.update(ID)
         self.update(t)
         if verbose: print "Added index "+name
@@ -182,7 +201,7 @@ class indlib():
     """
 
     def __init__(self, name=None, ind_start=None, ind_stop=None, blue_start=None, \
-                 blue_stop=None, red_start=None, red_stop=None, table=None, dicts=None, verbose=False):
+                 blue_stop=None, red_start=None, red_stop=None, resol=None, table=None, dicts=None, verbose=False):
         """
         Set up the index class in two ways depending on input:
         - do single index with individual components specified
@@ -212,7 +231,7 @@ class indlib():
         return getattr(self,item)
 
     def add_simple_index(self, name=None, ind_start=None, ind_stop=None, blue_start=None, \
-                  blue_stop=None, red_start=None, red_stop=None, verbose=False):
+                  blue_stop=None, red_start=None, red_stop=None, resol=None, verbose=False):
         """
         Add a single index 'manually'
 
@@ -221,7 +240,7 @@ class indlib():
         assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
 
         newind = ind(ind_start=ind_start, ind_stop=ind_stop, blue_start=blue_start, \
-                     blue_stop=blue_stop, red_start=red_start, red_stop=red_stop, name=name)
+                     blue_stop=blue_stop, red_start=red_start, red_stop=red_stop, resol=resol, name=name)
         setattr(self,name,newind)
         self.nindex+=1
         self.names.append(name)
@@ -249,6 +268,9 @@ class indlib():
     def add_simple_indices_via_table(self, verbose=False):
         """
         Add multiple indices through a table
+
+        Assume no resolution info in table
+        
         """
 
         nind = len(self.table.name)
@@ -269,7 +291,8 @@ class indlib():
         """
         Add a single index via (unspecified) dict class
 
-        This is likely surplus 
+        This is likely surplus
+        Assume no resolution in dict
         """
 
         # make sure dict has all the required attributes, and they're not None
@@ -368,8 +391,6 @@ class indlib():
             listOfIndices.append(self[ind])
         newLib=indlib(dicts=listOfIndices)
         return newLib
-        
-        
         
 
 def loadLickIndicesAir(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt",verbose=False):
@@ -518,4 +539,44 @@ def calcMgFePrime(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
     return rlist
 
 
+def fitLickRes(data=lickResolutions, order=4, npoints=100, doPlot=True, update=True):
+    """
+    RH 20/10/2016
+
+    Fit the lick resolution as a function of wavelength with a quadratic, using the data from Worthey and Ottaviani, 1997, Table 8.
+    Then update the module global lickResPolyFit, if asked
+
+    With order=4, I get: [  1.23827561e-12,  -2.53065476e-08,   1.94910696e-04, -6.70562662e-01,   8.77800000e+02]
+
+    """
+    global lickResPolyFit
+    xx=np.linspace(data[0].min()*0.9, data[0].max()*1.1, npoints)
+    coef = np.polyfit(data[0], data[1], order)
+    fit = np.polyval(coef, xx)
+
+    if doPlot:
+        pl.plot(data[0], data[1], "ko", label="Data")
+        pl.plot(xx, fit, "r-", label="Polynomial fit")
+
+    if update:
+        lickResPolyFit=coef
+
+    return coef
+
+def addLickRes2IndLib(lib, coefs=lickResPolyFit):
+    """
+    RH 20/10/16
+
+    Cycle through index library, updating the resolution keyword to that of the Lick resolution.
+
+    """
+
+    indices=lib.names
+    for ind in indices:
+        # calc central feature wavelength
+        clam = np.mean(np.array(lib[ind]['ind_start'] + lib[ind]['ind_stop']))
+        FWHM = np.polyval(lickResPolyFit, clam)
+        lib[ind]['resol']=FWHM
+
+    return lib
 

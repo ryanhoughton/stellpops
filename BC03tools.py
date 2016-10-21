@@ -48,7 +48,7 @@ def readsec(txt, startline):
     return nval, nvals, n
     
 
-def loadBC03spec(fname, IMF=None, loadMassFile=True, resolution=[None,{'3200AA-9500AA':(3.1,3.4)}]):
+def loadBC03spec(fname, IMF=None, loadMassFile=True, resolution=[None,{'3200,9500':(3.1,3.4)}]):
 
     """
     Author: Ryan Houghton (16/4/11)
