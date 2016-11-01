@@ -19,6 +19,7 @@ import numpy as np
 import atpy as ap
 import pdb
 from stellpops import indexTools as it
+from stellpops import M11tools as m11
 
 # setup the base directory
 basedir="/home/houghton/z/data/stellar_pops/"
@@ -32,12 +33,12 @@ def loadT03Models(dir=basedir+'TMB03/', file='alpha-models', abundance='', \
     tab = loadModels(dir=dir, file=file, Fe1=Fe1, Fe2=Fe2, rawTable=rawTable, verbose=verbose)
     return tab
 
-def loadT10Models(dir=basedir+'TMJ10/', file='tmj', abundance='', \
+def loadT10Models(dir=basedir+'TMJ10/', resolution='Lick', resDict={'Lick':'tmj', 'MILES':'tmj_HighRes'}, abundance='', \
                   Fe1='Fe5270', Fe2='Fe5335', rawTable=False, verbose=True):
     """
     These indices are calibrated to normal flux-calibrated spectra, so no need for Lick standard stars, etc. 
     """
-    tab = loadModels(dir=dir, file=file, Fe1=Fe1, Fe2=Fe2, rawTable=rawTable, verbose=verbose)
+    tab = loadModels(dir=dir, file=resDict[resolution], Fe1=Fe1, Fe2=Fe2, rawTable=rawTable, verbose=verbose)
     return tab
 
 def loadModels(dir=basedir+'TMB03/', file='alpha-models', abundance='', suffix='.dat', \
@@ -298,3 +299,28 @@ def compareT03T11():
     pl.plot(t11['Z=0.0']['A=0.5']['MgFeP'], t03['Z=0.0']['A=0.5']['Fe5335'], "r--")
 
     pdb.set_trace()
+
+
+def calcDispCorsForLickWithM11(indices=None, maxVelDisp=500.0, minVelDisp=100.0, nSample=21, ageMinMax=[1.0, 15.0], order=4, doPlot=False):
+    """
+    RH 27/10/2016
+
+    Calculate dispersion correctors using the Maraston 2011 models for all Lick indices
+
+    """
+
+    # load Lick indices: using AIR wavelengths and LICK resolutions
+    libLick = it.loadLickIndicesAir(atLickRes=True)
+    
+    # load M11 models
+    ms = m11.loadM11ssps(lib='MILES')
+
+    # for each index, calculate a corrector
+    cors={}
+    if indices is None:
+        indices=libLick.names
+    
+    for ind in indices:
+        cors[ind] = it.calcVelDispIndexCorrection(ms, libLick[ind], maxVelDisp=maxVelDisp, minVelDisp=minVelDisp, normVelDisp=None, \
+                                                      nSample=nSample, ageMinMax=ageMinMax, order=order, doPlot=doPlot)
+    return cors

@@ -9,7 +9,7 @@ from os.path import expanduser
 L_sun = 3.826E33 # the L_sun defined by BC03 in erg/s
 
 def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
-                angstscale=1.0, fluxscale=1.0, skip=0, \
+                angstscale=1.0, fluxscale=1.0, skip=0, minAge=None, maxAge=None, \
                 Zdict={"10m4":0.00025, "0001":0.001, "001":0.01, \
                 "002":0.02, "004":0.04, "007":0.07}, \
                 resolution=[None,{'vis':(5,10), 'nir':(20,100)}], ):
@@ -41,7 +41,7 @@ def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
     nlam=len(loc)
 
     # check if file has whole number of spectra
-    if (float(ny)/float(nlam) % 1) != 0.0: raise "NLINE != N*NLAM ?!"
+    assert (float(ny)/float(nlam) % 1) == 0.0, "NLINE != N*NLAM ?!"
 
     nspec = ny/nlam
 
@@ -72,8 +72,21 @@ def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
         mass = massdata[2,zloc]
     else:
         mass=None
+
+    # cut ages if given
+    if (minAge is not None) & (maxAge is not None):
+        aloc = np.where((ages>=minAge) & (ages<=maxAge))[0]
+    elif (minAge is not None) & (maxAge is None):
+        aloc = np.where(ages>=minAge)[0]
+    elif (minAge is None) & (maxAge is not None):
+        aloc = np.where(ages<=maxAge)[0]
+    else:
+        aloc = np.arange(len(ages))
+    ages = ages[aloc]
+    specs = specs[aloc,:]
     
-    spectra = t.spectrum(lam=lam, lamspec=specs, age=ages, Z=Z, mass=mass, model="M05", resolution=resolution)
+    spectra = t.spectrum(lam=lam, lamspec=specs, age=ages, Z=Z, mass=mass, model="M05", \
+                         resolution=resolution, wavesyst="air")
 
     return spectra
     

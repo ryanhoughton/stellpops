@@ -53,7 +53,7 @@ def loadM11ssps(sedpath=basedir, dir=dirprefix, lib="MILES", \
                 imf="salpeter", glob="00{1,2,4}", \
                 IMFdict={"salpeter":"ss", "kroupa":"kr", "chabrier":"cha"}, \
                 Zdict={"10m4":0.00025, "0001":0.001, "001":0.01, \
-                "002":0.02, "004":0.04, "007":0.07}, \
+                "002":0.02, "004":0.04, "007":0.07}, minAge=0.1, maxAge=None, \
                 RESdict={'Pickles':[500.,None], 'STELIB':[None, (3.1,3.4)], 'MILES':[None, 2.54], \
                          'ELODIE':[None, 0.55], 'MARCS':[20000,None]}, verbose=False):
     """
@@ -74,6 +74,9 @@ def loadM11ssps(sedpath=basedir, dir=dirprefix, lib="MILES", \
 
     As the HB morph only plays a role at low Z
 
+    NOTE: at least for the MILES modes, the ages for each Z are different. Specifying minAge=0.1 solves this as this is the
+    minimum age for the most metal rich models and thereafter, sampling of ages is uniform.
+
     """
 
     # get the file name
@@ -90,12 +93,12 @@ def loadM11ssps(sedpath=basedir, dir=dirprefix, lib="MILES", \
     if not os.path.isfile(massfile): massfile=None
 
     specs = []
-    specs.append(M05.loadM05spec(files[0], massfile=massfile, resolution=RESdict[lib]))
-    if verbose: print "Read "+files[0]+" (Z="+str(specs[-1].Z)+")"
+    #specs.append(M05.loadM05spec(files[0], massfile=massfile, resolution=RESdict[lib]))
+    #if verbose: print "Read "+files[0]+" (Z="+str(specs[-1].Z)+")"
 
     # load in all the others
-    for fname in files[1:]:
-        specs.append(M05.loadM05spec(fname, massfile=massfile, resolution=RESdict[lib]))
+    for fname in files:
+        specs.append(M05.loadM05spec(fname, massfile=massfile, resolution=RESdict[lib], minAge=minAge, maxAge=maxAge))
         if verbose: print "Read "+fname+" (Z="+str(specs[-1].Z)+")"
 
     return specs

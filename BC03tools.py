@@ -115,7 +115,8 @@ def loadBC03spec(fname, IMF=None, loadMassFile=True, resolution=[None,{'3200,950
     factor= (L_sun/(10.0*t.pc*100.0)**2.0) / (4.0*np.pi)
     alldata = alldata * factor
 
-    spectra = t.spectrum(lamspec=alldata, lam=lams, age=ages, mass=mass, Z=Z, model="BC03", IMF=IMF, resolution=resolution)
+    spectra = t.spectrum(lamspec=alldata, lam=lams, age=ages, mass=mass, Z=Z, model="BC03", \
+                         IMF=IMF, resolution=resolution, wavesyst="air")
 
     return spectra #nspec, ages, nlam, lams, alldata
 
@@ -255,7 +256,7 @@ def loadFilters(dir="~/z/data/stellar_pops/BC03/src/", file="filterfrm.res", \
             #    #raise "OH NO! Filter sampling is not regular" 
             #trans /= np.sum(trans) # normalise
                         
-            filters[filt]=t.spectrum(lamspec=trans, lam=lams, filter=True, model="BC03 Filters")
+            filters[filt]=t.spectrum(lamspec=trans, lam=lams, filter=True, model="BC03 Filters", wavesyst="air")
             if verbose: print "Done "+str(filt)
             # start the next filter
             filt = s.join((txt[count].split())[1:])
@@ -267,7 +268,7 @@ def loadFilters(dir="~/z/data/stellar_pops/BC03/src/", file="filterfrm.res", \
     # add the last filter to the set
     lams=np.array(lams)
     trans=np.array(trans)
-    filters[filt]=t.spectrum(lamspec=trans, lam=lams, filter=True, model="BC03 Filters")
+    filters[filt]=t.spectrum(lamspec=trans, lam=lams, filter=True, model="BC03 Filters", wavesyst="air")
     if verbose: print "Done "+str(filt)
 
     return filters
@@ -288,6 +289,8 @@ def loadVega(dir="~/z/data/stellar_pops/BC03/src/", \
     Returns:
        lams  - wavelength of the pixel (AA)
        flux  - flux in each pixel (erg/s/cm**2/AA)
+
+    ALL HST CALSPEC SPECS aRE IN VACUUM WAVELENGTHS
     """
 
     lams, flux = np.loadtxt(expanduser(dir)+fname, skiprows=2, unpack=True)
@@ -296,7 +299,7 @@ def loadVega(dir="~/z/data/stellar_pops/BC03/src/", \
     factor = (L_sun/(10.0*t.pc*100)**2.0) / (4.0*np.pi)
     flux  *= factor
     
-    vega = t.spectrum(lams=lams,lamspec=flux, model="VEGA")
+    vega = t.spectrum(lams=lams,lamspec=flux, model="VEGA", wavesyst="vac")
     
     return vega
         

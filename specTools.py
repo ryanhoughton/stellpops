@@ -7,16 +7,18 @@ from numpy.polynomial import chebyshev as cheby
 #from stellpops import M05tools as ma
 import re
 import os
+import warnings as warn
 import pdb
 from os.path import expanduser
 from nearest import nearest as nn
 
 
 # globals
-
 c = 299792458.0 # m/s
 pc= 3.08568025E16
 d_sun = 149597887.5e3 # m
+sigmaInFWHM = np.sqrt(8.*np.log(2.0))
+L_sun = 3.826E33 # the L_sun defined by BC03 in erg/s
 
 class spectrum:
     """
@@ -58,7 +60,7 @@ class spectrum:
     global c, pc, d_sun
     
     def __init__(self, lam=None, lamspec=None, errlamspec=None, mu=None, muspec=None, errmuspec=None, \
-                 age=None, mass=None, Z=None, IMF=None, filter=False, model=None, resolution=None, \
+                 age=None, mass=None, alpha=None, Z=None, IMF=None, filter=False, model=None, resolution=None, wavesyst=None, \
                  userdict=None):
 
         """
@@ -71,7 +73,8 @@ class spectrum:
            muspec  - the (1D, 2D or 3D) array of fluxes on the specified mu grid (becomes self.fmu)
            errmuspec - standard deviation for pixels in muspec (becomes self.efmu)
            age     - the 1D array of ages (Gyr) for the spectra
-           mass    - the 2D array of stellar masses (M_Sun) at each age for each spectrum
+           mass    - the 1D array of stellar masses (M_Sun) at each age for each spectrum
+           alpha   - the 1D array of [alpha/Fe] values corresponding to each spectrum
            Z       - the 1D array of metallicities for the spectra
            IMF     - string describing IMF type
            filter  - if the spectrum is a filter transmission (photon %), then set this to TRUE. This affects how we calc Fmu
@@ -86,7 +89,7 @@ class spectrum:
                Either may be None, depending on how the models/libs are defined.
                
                SEE calcResolution BELOW FOR MORE INFO!!!
-               
+           wavesyst - you MUST specify if the wavelengths are in the AIR or VAC system. 
            userdict- add extra user-defined tags to the spectrum, such as airmass, water vapour etc.
 
         Notes:
@@ -177,6 +180,11 @@ class spectrum:
             self.mass=mass
             self.logmass = np.log10(mass)
 
+        if alpha is not None:
+            #if(len(alpha)!=nspec): raise "NALPHA != NSPEC?!"
+            self.alpha=alpha
+
+
         # add metallicitiy
         if Z is not None:
             if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
@@ -192,7 +200,19 @@ class spectrum:
 
         # add the resolution in AA
         if resolution is not None:
-            self.resolution=resolution 
+            self.resolution=resolution
+
+        # add VAC or AIR
+        if wavesyst is not None:
+            if (wavesyst=="vac" or wavesyst=="VAC" or wavesyst=="Vac"):
+                self.wavesyst="vac"
+            elif (wavesyst=="air" or wavesyst=="AIR" or wavesyst=="Air"):
+                self.wavesyst="air"
+            else:
+                raise ValueError("wavesyst not understood. Should be air or vac.")
+        else:
+            warn.warn("You failed to specify if the wavelength is defined in AIR or VAC units.")
+            self.wavesyst=None
 
         # add user dictionary for extra info
         if userdict is not None:
@@ -639,16 +659,17 @@ class spectrum:
 
         return cspec
 
-    def gaussVelConvolve(self, vel, sigma, h3h4=None, instsig=None, nsig=5.0, losvd=None, overwrite=True, verbose=True):
+    def gaussVelConvolve(self, vel, sigma, h3h4=None, correct4InstRes=True, nsig=5.0, losvd=None, overwrite=True, verbose=True):
         """
         Purpose: to convolve the spectrum with a Gaussian of known velocity (V)
                  and width (SIGMA)
 
         Input:
            - vel  : velocity (use 0.0 for now)
-           - sigma      
+           - sigma: dispersion in km/s      
 
         """
+        global c
 
         # get minimum vel resolution in spec and use this for dloglam
         velscale = np.min((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 # km/s
@@ -670,10 +691,24 @@ class spectrum:
 
         # if kernel not passed, create it.
         if losvd == None: # speed up if losvd passed
-            dv = np.ceil(nsig*sigma/velscale) 
+            
+            # calc required kernel dispersion
+            if correct4InstRes:
+                # correct for instrumental dispersion
+                meanLam = np.mean(np.array(self.lam[0],self.lam[-1])) # mean wavelength
+                resAA = self.calcResolution(meanLam) # FWHM res at this wavelength
+                sigmaSpec = resAA/meanLam * c / 1e3 / np.sqrt(8.*np.log(2.)) # equivalent vel disp
+                # sanity check
+                assert sigma > sigmaSpec, "Cannot convolve to this dispersion, spectral resolution too coarse."
+                # do calc
+                sigmaKernel = np.sqrt(sigma**2.0 - sigmaSpec**2.0)
+            else:
+                sigmaKernel = sigma
+            
+            dv = np.ceil(nsig*sigmaKernel/velscale) 
             nv = 2*dv + 1
             v = np.linspace(dv,-dv,nv) 
-            w = (v - vel/velscale) / (sigma/velscale)
+            w = (v - vel/velscale) / (sigmaKernel/velscale)
             w2= w*w
             if h3h4 != None:
                 h3=h3h4[0]
@@ -683,7 +718,7 @@ class spectrum:
             else:
                 poly = np.ones(nv)
 
-            losvd = np.exp(-0.5*w**2.0)/(np.sqrt(2.0*np.pi)*sigma/velscale) * poly 
+            losvd = np.exp(-0.5*w**2.0)/(np.sqrt(2.0*np.pi)*sigmaKernel/velscale) * poly 
             losvd=losvd/np.sum(losvd)
 
         count=0
@@ -729,7 +764,7 @@ class spectrum:
 
         Inputs:
             index: an indlib class from indexTools.py
-            disp: float - spectral dispersion [A/pixel], NOT anything to do with spectral resolution.
+            disp: float - spectral dispersion [A/pixel] (i.e. pixel sampling), NOT anything to do with spectral resolution.
             round_prec: precision for rounding wavelengths (Method=4)
             Method: Specify the index calculation method
                     0 = Simple method using means (no variance weighting)
@@ -742,13 +777,17 @@ class spectrum:
             ind_var (optional): variance on index measurement if spectrum class has variance defined
             
         """
+        # check that both the spectrum and the index are defined in the same wavelength system
+        if (self.wavesyst is not None) & (index['wavesyst'] is not None):
+            if self.wavesyst!=index['wavesyst']:
+                raise ValueError("Spectrum and index defined on different wavelength systems")
+        else:
+            warn.warn("Unsure of wavelength systems for index and/or spectrum (air or vac?).")
 
         # check the resolution
         if index['resol'] is not None:
-            meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
-            currentFWHM = self.calcResolution(meanWave)
             outputFWHM = index['resol']
-            newSpec = cutAndConvolve(self, index, currentFWHM, outputFWHM, verbose=False)
+            newSpec = cutAndGaussLamConvolve(self, index, outputFWHM, verbose=False)
         else:
             newSpec=self
         
@@ -764,7 +803,7 @@ class spectrum:
         else:
             raise ValueError("Method not understood")
 
-        return vals
+        return np.array(vals)
 
     def CaT_star(self, disp, var_SED=None):
         '''Function to calculate CaT* index
@@ -1369,7 +1408,7 @@ def air2vac(wave_air, useIDLcoef=True, verbose=False):
         wave_vac[g] = wave_air[g]*fact      # Convert Wavelength
     return wave_vac
 
-def cutAndConvolve(longSpec, index, currentFWHM, outputFWHM, verbose=True):
+def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=5.0, verbose=True):
     """
     RH 18/10/2016
 
@@ -1391,16 +1430,22 @@ def cutAndConvolve(longSpec, index, currentFWHM, outputFWHM, verbose=True):
      - verbose    : print stuff, can get anoying
 
     """
+    global sigmaInFWHM
+    
+    # sort inputs
+    if currentFWHM is None:
+        meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
+        currentFWHM = longSpec.calcResolution(meanWave)
 
     # calc convolution kernel width, using Puzia+04 Eq
-    fac = np.sqrt(8.*np.log(2.0))
     kernelFWHM = np.sqrt(outputFWHM**2.0 - currentFWHM**2.0)
-    kernelSigma=kernelFWHM/fac
+    kernelSigma=kernelFWHM/sigmaInFWHM
+    assert outputFWHM > currentFWHM, "Cannot convole to a lower resolution than already have."
     if verbose: print "In FWHM="+str(currentFWHM)+", out FWHM="+str(outputFWHM)+", kernel FWHM="+str(kernelFWHM)
 
     # define cut spectrum edges
-    cutlow = (index['blue_start'] - 5.0*kernelFWHM)
-    cuthigh= (index['red_stop'] + 5.0*kernelFWHM)
+    cutlow = (index['blue_start'] - nSig*kernelSigma)
+    cuthigh= (index['red_stop']   + nSig*kernelSigma)
 
     # cut spec
     cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
@@ -1413,7 +1458,81 @@ def cutAndConvolve(longSpec, index, currentFWHM, outputFWHM, verbose=True):
 
     # convolve
     cutSpec.gaussLamConvolve(kernelSigma, overwrite=True, verbose=verbose)
+    # return
+    return cutSpec
 
+
+def cutAndGaussVelConvolve(longSpec, index, outputSigma, currentFWHM=None, doPlot=False, verbose=True):
+    """
+    RH 18/10/2016
+
+    In order to measure indices at different velocity dispersions, we need to cut and convolve a
+    spectrum with a Gaussian kernel in velocity space.
+
+    This code cuts out a part of the spectrum (red and blue continuum limits +- 5 sigma) and convolves
+    the spectrum with the given dispersion, in velocity space. It then returns this new, shorter, convolved spectrum.
+
+    Puzia et al 2004 Eq in Sec4.1 is useful
+
+    All convolutions done in velocity space, not lambda space
+
+    Inputs:
+     - longSpec   : the spectrum which is to be cut and convolved
+     - index      : the index definition, used to cut spec to right size
+     - outputSigma: the desired output velocity dispersion in km/s
+     - currentFWHM: the current spectral resolution (FWHM) in AA
+     - verbose    : print stuff, can get anoying
+
+    """
+    global sigmaInFWHM, c
+    meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
+    # sort inputs
+    if currentFWHM is None:
+        currentFWHM = longSpec.calcResolution(meanWave)
+        
+    # calc convolution kernel width, using Puzia+04 Eq
+    outputFWHM = outputSigma*1e3/c * meanWave * sigmaInFWHM
+    kernelFWHM = np.sqrt(outputFWHM**2.0 - currentFWHM**2.0)
+    kernelSigma= kernelFWHM/sigmaInFWHM
+    assert outputFWHM > currentFWHM, "Cannot convole to a lower resolution than already have."
+    if verbose: print "In FWHM="+str(currentFWHM)+", out FWHM="+str(outputFWHM)+", kernel FWHM="+str(kernelFWHM)
+
+    # define cut spectrum edges
+    cutlow = (index['blue_start'] - 5.0*kernelSigma)
+    cuthigh= (index['red_stop']   + 5.0*kernelSigma)
+
+    # cut spec
+    cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
+    assert len(cloc)!=0, "Found no matching wavelengths"
+    clam  = longSpec.lam[cloc]
+    cflam=[]
+    for s in longSpec.flam:
+        cflam.append(s[cloc])
+    cutSpec = spectrum(lam=clam, lamspec=cflam)
+
+    # convolve
+    velSigma = kernelSigma/meanWave*c/1e3
+    cutSpec.gaussVelConvolve(0.0, velSigma, correct4InstRes=False, overwrite=True, verbose=verbose)
+
+    # do plot if asked
+    if doPlot:
+        pl.figure(figsize=(12,6))
+        pl.subplot(121)
+        lnorm = np.median(longSpec.flam[0][cloc])
+        pl.plot(longSpec.lam, longSpec.flam[0]/lnorm, "k-")
+        pl.plot(cutSpec.lam, cutSpec.flam[0]/lnorm, "r-")
+        pl.fill_between([index['ind_start'][0], index['ind_stop'][0]], 0., [2.0, 2.0], color="blue", alpha=0.2)
+        pl.fill_between([index['blue_start'], index['blue_stop']], 0., [2.0, 2.0], color="red", alpha=0.2)
+        pl.fill_between([index['red_start'], index['red_stop']], 0., [2.0, 2.0], color="red", alpha=0.2)
+        pl.axis([index['blue_start']*0.995, index['red_stop']*1.005, 0.5, 1.3])
+        pl.subplot(122)
+        lnorm = np.median(longSpec.flam[-1][cloc])
+        pl.plot(longSpec.lam, longSpec.flam[-1]/lnorm, "k-")
+        pl.plot(cutSpec.lam, cutSpec.flam[-1]/lnorm, "r-")
+        pl.fill_between([index['ind_start'][0], index['ind_stop'][0]], 0., [2.0, 2.0], color="blue", alpha=0.2)
+        pl.fill_between([index['blue_start'], index['blue_stop']], 0., [2.0, 2.0], color="red", alpha=0.2)
+        pl.fill_between([index['red_start'], index['red_stop']], 0., [2.0, 2.0], color="red", alpha=0.2)
+        pl.axis([index['blue_start']*0.995, index['red_stop']*1.005, 0.5, 1.3])
     # return
     return cutSpec
     
