@@ -154,14 +154,14 @@ def loadCD12spec(filepath):
         #IMFs = x=3.5, 3.0, 2.35, Chabrier, bottom-light
         IMFs = ['x = 3.5', 'x = 3.0', 'x = 2.35', 'Chabrier', 'bottom-light']
         return st.spectrum(lamspec=newflux, lam=newlambs, age=Age,
-                          Z=0.2, IMF=IMFs, model='CvD12', mass=mass, wavesyst="vac")
+                          Z=0.2, IMF=IMFs, model='CD12', mass=mass, wavesyst="vac")
 
     if 'afe' in fname:
         met = 0.0
         IMFs = ['x = 3.5', 'x = 3.0', 'x = 2.35', 'Chabrier', 'bottom-light']
         afes = {'afe': float(fname.split('+')[1][0:3])}
         return st.spectrum(lamspec=newflux, lam=newlambs, age=Age, alpha=afes['afe'], 
-                          Z=met, IMF=IMFs, model='CvD12', 
+                          Z=met, IMF=IMFs, model='CD12', 
                           mass=mass, wavesyst="vac") #userdict=afes,
 
     if 'varelem' in fname:
@@ -178,8 +178,8 @@ def loadCD12spec(filepath):
                 '[Ti/Fe] = +0.3', '[Ti/Fe] = -0.3', '[Mg/Fe] = +0.3', '[Mg/Fe] = -0.3',
                 '[Si/Fe] = +0.3', '[Si/Fe] = -0.3']}
         return st.spectrum(lamspec=newflux, lam=newlambs, age=Age,
-                          Z=met, IMF=IMF, model='CvD12', userdict=abunlist,
+                          Z=met, IMF=IMF, model='CD12', userdict=abunlist,
                           mass=mass, wavesyst="vac")
 
     else:
-        raise ValueError('Did not input correct CvD12 file [as of 03-04-14]')
+        raise ValueError('Did not input correct CD12 file [as of 03-04-14]')

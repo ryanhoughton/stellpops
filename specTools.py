@@ -237,7 +237,7 @@ class spectrum:
             self.__userdict__ = userdict
             keys = userdict.keys()
             for key in keys:
-                setattr(self, key, userdict[key])
+                setattr(self, key, singleOrList2Array(userdict[key]))
         else:
             self.__userdict__ = None
 
@@ -273,6 +273,16 @@ class spectrum:
                         dself[cla] = dself[cla][loc]
                     except:
                         pass
+            # check userdict
+            if dself['__userdict__'] is not None:
+                keys = dself['__userdict__'].keys()
+                for k in keys:
+                    # for each key, try and address it with loc. Don't fret if not possible.
+                    try:
+                        dself['__userdict__'][k] = singleOrList2Array(dself['__userdict__'][k])[loc]
+                    except:
+                        pass
+                    
             newspec = spectrum(lam=dself['lam'], lamspec=dself['flam'], errlamspec=dself['eflam'], \
                                age=dself['age'], mass=dself['mass'], alpha=dself['alpha'], Z=dself['Z'], \
                                IMF=dself['IMF'], filter=dself['__filter__'], model=dself['model'], \
@@ -391,7 +401,7 @@ class spectrum:
 
         self.fmu = []
         if filter:
-            for flam in self.flam:
+            for flam in np.atleast_2d(self.flam):
                 self.fmu.append( flam )
             #if hasattr(self, 'eflam'):
             #    self.efmu = []
@@ -400,16 +410,22 @@ class spectrum:
             #            self.efmu.append( eflam )
             #        #else:
             #        #    self.efmu.append(None)
+            self.fmu=singleOrList2Array(self.fmu)
         else:
-            for flam in self.flam:
+            for flam in np.atleast_2d(self.flam):
                 self.fmu.append( flam * self.lam * (self.lam) / c * 1e4 )
+            self.fmu = singleOrList2Array(self.fmu)
             if self.eflam is not None: #hasattr(self, 'eflam'):
                 self.efmu = []
-                for eflam in self.eflam:
+                for eflam in np.atleast_2d(self.eflam):
                     if eflam is not None:
                         self.efmu.append( eflam * self.lam * (self.lam) / c * 1e4 )
+                self.efmu = singleOrList2Array(self.efmu)
                     #else:
                     #    self.efmu.append(None)
+
+            pdb.set_trace()
+        
             
 
 
@@ -426,6 +442,7 @@ class spectrum:
         if filter:
             for fmu in self.fmu:
                 self.flam.append( fmu )
+            self.flam = singleOrList2Array(self.flam)
             #if hasattr(self, 'efmu'):
             #    self.eflam = []
             #    for efmu in self.efmu:
@@ -437,6 +454,7 @@ class spectrum:
         else:
             for fmu in self.fmu:
                 self.flam.append( fmu / self.lam / (self.lam) * c / 1e4 )
+            self.flam = singleOrList2Array(self.flam)
             if self.efmu is not None: #hasattr(self, 'efmu'):
                 self.eflam=[]
                 for efmu in self.efmu:
@@ -444,6 +462,7 @@ class spectrum:
                         self.eflam.append( efmu / self.lam / (self.lam) * c / 1e4 )
                     else:
                         self.eflam.append(None)
+                self.eflam = singleOrList2Array(self.eflam)
 
     def rebinLam(self, dLam=1e-4, flux=False):
         """
@@ -946,12 +965,12 @@ def singleOrList2Array(invar):
 
     if isinstance(invar, list):
         # convert to array unless size-1
-        rval = np.array(invar)
+        rval = np.squeeze(np.array(invar))
         if rval.size==1:
             rval = np.asscalar(rval)
     elif isinstance(invar, np.ndarray):
         # leave except if size-1
-        rval = invar
+        rval = np.squeeze(invar)
         if rval.size==1:
             rval = np.asscalar(rval)
     else:
