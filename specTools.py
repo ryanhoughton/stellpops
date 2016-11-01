@@ -7,6 +7,7 @@ from numpy.polynomial import chebyshev as cheby
 #from stellpops import M05tools as ma
 import re
 import os
+import copy as cp
 import warnings as warn
 import pdb
 from os.path import expanduser
@@ -130,7 +131,7 @@ class spectrum:
             nspec= loc[0]
 
             self.lam  = lam
-            self.flam = flam#.tolist()
+            self.flam = singleOrList2Array(flam)#.tolist()
 
             if errlamspec is not None:
                 eflam = np.atleast_2d(errlamspec)
@@ -138,6 +139,8 @@ class spectrum:
                 self.eflam = eflam
                 # sanity check
                 assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
+            else:
+                self.eflam = None
             #else:
             #    self.eflam = [None for f in self.flam] # make a list of 'None's
 
@@ -156,7 +159,7 @@ class spectrum:
             nspec = loc[0]
             
             self.mu   = mu
-            self.fmu = fmu#.tolist()
+            self.fmu = singleOrList2Array(fmu)#.tolist()
 
             if errmuspec is not None:
                 # if 1D array, blk up to 2D
@@ -165,42 +168,57 @@ class spectrum:
                 self.efmu = efmu
                 # sanity check
                 assert np.all(loc==eloc), "muspec and errmuspec seem to be different shapes."
+            else:
+                self.efmu=None
 
             self.calclamspec(filter=filter)
 
         # add age info
         if age is not None:
             if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
-            self.age=age
-            self.logage = np.log10(age)
+            self.age = singleOrList2Array(age)
+            self.logage = np.log10(self.age)
+        else:
+            self.age = None
 
         # add stellar mass info for each age
         if mass is not None:
             #if(len(mass)!=nspec): raise "NMASS != NSPEC?!"
-            self.mass=mass
-            self.logmass = np.log10(mass)
+            self.mass = singleOrList2Array(mass)
+            self.logmass = np.log10(self.mass)
+        else:
+            self.mass = None
 
         if alpha is not None:
             #if(len(alpha)!=nspec): raise "NALPHA != NSPEC?!"
-            self.alpha=alpha
-
+            self.alpha = singleOrList2Array(alpha)
+        else:
+            self.alpha = None
 
         # add metallicitiy
         if Z is not None:
             if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
-            self.Z=Z
+            self.Z = singleOrList2Array(Z)
+        else:
+            self.Z = None
 
         # add IMF
         if IMF is not None:
-            self.IMF=IMF
+            self.IMF = singleOrList2Array(IMF)
+        else:
+            self.IMF = None
 
         # name of the model, e.g. BC03
         if model is not None:
-            self.model=model
+            self.model = singleOrList2Array(model)
+        else:
+            self.model = None
 
         # add the resolution in AA
         if resolution is not None:
-            self.resolution=resolution
+            self.resolution = singleOrList2Array(resolution)
+        else:
+            self.resolution = None
 
         # add VAC or AIR
         if wavesyst is not None:
@@ -216,9 +234,52 @@ class spectrum:
 
         # add user dictionary for extra info
         if userdict is not None:
+            self.__userdict__ = userdict
             keys = userdict.keys()
             for key in keys:
                 setattr(self, key, userdict[key])
+        else:
+            self.__userdict__ = None
+
+        if filter:
+            self.__filter__=filter
+        else:
+            self.__filter__=False
+
+    # define a copy function
+    def copy(self, loc=None):
+        """
+        Make an copy of the spectrum, so that if you change the copy, it DOESNT change the original.
+        """
+        if loc is None:
+            # simple copy of everything
+            dself = cp.deepcopy(self.__dict__)
+            newspec = spectrum(lam=dself['lam'], lamspec=dself['flam'], errlamspec=dself['eflam'], \
+                               age=dself['age'], mass=dself['mass'], alpha=dself['alpha'], Z=dself['Z'], \
+                               IMF=dself['IMF'], filter=dself['__filter__'], model=dself['model'], \
+                               resolution=dself['resolution'], wavesyst=dself['wavesyst'], \
+                               userdict=dself['__userdict__'])
+        else:
+
+            # simple copy of everything
+            dself = cp.deepcopy(self.__dict__)
+
+            coreLocArgs = ['flam', 'eflam', 'mass', 'age', 'alpha', 'Z', 'IMF']
+            # now check indiv args
+            for cla in coreLocArgs:
+                # for each core arg with loc indexing, try and index it. If you fail, stick with original
+                if dself[cla] is not None:
+                    try:
+                        dself[cla] = dself[cla][loc]
+                    except:
+                        pass
+            newspec = spectrum(lam=dself['lam'], lamspec=dself['flam'], errlamspec=dself['eflam'], \
+                               age=dself['age'], mass=dself['mass'], alpha=dself['alpha'], Z=dself['Z'], \
+                               IMF=dself['IMF'], filter=dself['__filter__'], model=dself['model'], \
+                               resolution=dself['resolution'], wavesyst=dself['wavesyst'], \
+                               userdict=dself['__userdict__'])
+            
+        return newspec
 
     def calcResolution(self, wave):
         """
@@ -332,17 +393,17 @@ class spectrum:
         if filter:
             for flam in self.flam:
                 self.fmu.append( flam )
-            if hasattr(self, 'eflam'):
-                self.efmu = []
-                for eflam in self.eflam:
-                    if eflam is not None:
-                        self.efmu.append( eflam )
-                    #else:
-                    #    self.efmu.append(None)
+            #if hasattr(self, 'eflam'):
+            #    self.efmu = []
+            #    for eflam in self.eflam:
+            #        if eflam is not None:
+            #            self.efmu.append( eflam )
+            #        #else:
+            #        #    self.efmu.append(None)
         else:
             for flam in self.flam:
                 self.fmu.append( flam * self.lam * (self.lam) / c * 1e4 )
-            if hasattr(self, 'eflam'):
+            if self.eflam is not None: #hasattr(self, 'eflam'):
                 self.efmu = []
                 for eflam in self.eflam:
                     if eflam is not None:
@@ -365,18 +426,18 @@ class spectrum:
         if filter:
             for fmu in self.fmu:
                 self.flam.append( fmu )
-            if hasattr(self, 'efmu'):
-                self.eflam = []
-                for efmu in self.efmu:
-                    if efmu is not None:
-                        self.eflam.append( efmu )
-                    else:
-                        self.eflam.append(None)
+            #if hasattr(self, 'efmu'):
+            #    self.eflam = []
+            #    for efmu in self.efmu:
+            #        if efmu is not None:
+            #            self.eflam.append( efmu )
+            #        else:
+            #            self.eflam.append(None)
             
         else:
             for fmu in self.fmu:
                 self.flam.append( fmu / self.lam / (self.lam) * c / 1e4 )
-            if hasattr(self, 'efmu'):
+            if self.efmu is not None: #hasattr(self, 'efmu'):
                 self.eflam=[]
                 for efmu in self.efmu:
                     if efmu is not None:
@@ -746,7 +807,7 @@ class spectrum:
         # clip specs
         for flam in self.flam:
             newflams.append(flam[loc])
-        if hasattr(self, 'eflam'):
+        if self.eflam is not None: #hasattr(self, 'eflam'):
             neweflams=[]
             for eflam in self.eflam:
                 neweflams.append(eflam[loc])
@@ -754,8 +815,10 @@ class spectrum:
         # overwite old flams
         self.lam  = self.lam[loc]
         self.flam = newflams
-        if hasattr(self, 'eflam'):
+        if self.eflam is not None: #hasattr(self, 'eflam'):
             self.eflam = neweflams
+
+        # update muspec
         self.calcmuspec()
         
     def calcIndex(self, index, disp=None, round_prec=10, method=0, verbose=False):
@@ -845,7 +908,7 @@ class spectrum:
         for ni in xrange(nspec):
             # take local copies of flam and eflam (if defined)
             f=self.flam[ni]
-            if hasattr(self,"eflam"):
+            if self.eflam is not None: #hasattr(self,"eflam"):
                 ef = self.flam[ni]
             else:
                 ef = None
@@ -874,6 +937,29 @@ class spectrum:
 
 ###################################### END OF SPECTRUM CLASS #####################################
 
+
+def singleOrList2Array(invar):
+    """
+    If a single value, leave. If a list, convert to array. If array, leave as array.
+    But for size-1 arrays/lits, convert back to scalar.
+    """
+
+    if isinstance(invar, list):
+        # convert to array unless size-1
+        rval = np.array(invar)
+        if rval.size==1:
+            rval = np.asscalar(rval)
+    elif isinstance(invar, np.ndarray):
+        # leave except if size-1
+        rval = invar
+        if rval.size==1:
+            rval = np.asscalar(rval)
+    else:
+        # leave
+        rval = invar
+    # return
+    return rval
+        
 
 def linterp(x,y,x0):
     """
@@ -1689,7 +1775,7 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
     for spec in xrange(len(spectrum.flam)):
 
         SED = np.column_stack((spectrum.lam, spectrum.flam[spec]))
-        if hasattr(spectrum, 'eflam'):
+        if spectrum.eflam is not None: #hasattr(spectrum, 'eflam'):
             var_SED = np.column_stack((spectrum.lam, spectrum.eflam[spec]**2.0)) # make variance array
         else:
             var_SED = None

@@ -160,9 +160,9 @@ def loadCD12spec(filepath):
         met = 0.0
         IMFs = ['x = 3.5', 'x = 3.0', 'x = 2.35', 'Chabrier', 'bottom-light']
         afes = {'afe': float(fname.split('+')[1][0:3])}
-        return st.spectrum(lamspec=newflux, lam=newlambs, age=Age,
-                          Z=met, IMF=IMFs, model='CvD12', userdict=afes,
-                          mass=mass, wavesyst="vac")
+        return st.spectrum(lamspec=newflux, lam=newlambs, age=Age, alpha=afes['afe'], 
+                          Z=met, IMF=IMFs, model='CvD12', 
+                          mass=mass, wavesyst="vac") #userdict=afes,
 
     if 'varelem' in fname:
         IMF = 'Chabrier'
