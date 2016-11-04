@@ -1,11 +1,9 @@
 import pylab as pl
 import numpy as np
-import atpy as ap
-from stellpops import specTools as st
+from astropy.table import Table
+from spectools import air2vac, vac2air
 import pdb
 import copy
-import warnings as warn
-
 
 # define latex pretty printing labels for indices
 prettyPrint = {'CN_1':r'CN$_1$', \
@@ -35,8 +33,7 @@ prettyPrint = {'CN_1':r'CN$_1$', \
 
 
 # from Worthey and Ottaviani, 1997, Table 8, Wavelength in AA and FWHM in AA.
-lickResolutions=np.array([[4000,4400,4900,5400,6000],[11.5, 9.2, 8.4, 8.4, 9.8]])
-lickResPolyFit=[1.23827561e-12,  -2.53065476e-08,   1.94910696e-04, -6.70562662e-01,   8.77800000e+02]
+lickResolutions=[[4000,4400,4900,5400,6000],[11.5, 9.2, 8.4, 8.4, 9.8]]
 
 class ind(dict):
     """
@@ -47,27 +44,11 @@ class ind(dict):
     """
 
     def __init__(self, ind_start=None, ind_stop=None, blue_start=None, blue_stop=None, red_start=None, red_stop=None, \
-                 resol=None, name=None, wavesyst=None, verbose=False):
+                 name=None, verbose=False):
         """
-        Initalise index class, used to calculate equivalent widths using two (blue and red) continuum bandpasses
-        and a (index) feature bandpass.
+        Initalise class
 
-        The actual calculation of the index is left to a different tool (see specTools.py)
-
-        Inputs:
-        - ind_start : defines the (blue) start of the feature bandpass
-        - ind_stop  : defines the (red) end of the feature bandpass
-        - blue_start: defines the (blue) start of the blue continuum bandpass
-        - blue_stop : defines the (red) end of the blue continuum bandpass
-        - red_start : defines the (blue) start of the red continuum bandpass
-        - resol     : the resolution (FWHM) in AA that the index should be measured at. This is normally set to None
-                      (resolution of spectrum is not changed) unless the index is to be calculated on the Lick/IDS system.
-        - name      : the name of the index
-        - verbose   : print stuff to screen, which can get annoying.
-    
-
-        NOTE THAT CONT_START AND CONT_STOP ARE DEFINED INTERNALLY (used for index calc). 
-        
+        NOTE THAT CONT_START AND CONT_STOP ARE DEFINED INTERNALLY AND USED TO INITALISE (used for index calc)
         """
 
         assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
@@ -83,46 +64,20 @@ class ind(dict):
                 'blue_start':blue_start, 'blue_stop':blue_stop, 'red_start':red_start, 'red_stop':red_stop}
         nfeat = {'nfeat':1}
         ncont = {'ncont':2}
-        resol = {'resol':resol}
         ID = {'name':name}
         t = {'simpleIndex': True}
-        
         
         self.update(ind)
         self.update(cont)
         self.update(ncont)
         self.update(nfeat)
-        self.update(resol)
         self.update(ID)
         self.update(t)
-
-        if wavesyst is not None:
-            if (wavesyst=="vac" or wavesyst=="VAC" or wavesyst=="Vac"):
-                self.update({"wavesyst":"vac"})
-            elif (wavesyst=="air" or wavesyst=="AIR" or wavesyst=="Air"):
-                self.update({"wavesyst":"air"})
-            else:
-                raise ValueError("wavesyst not understood. Should be air or vac.")
-        else:
-            warn.warn("You failed to specify if the wavelengths are defined in AIR or VAC units.")
-            self.wavesyst=None
-            
         if verbose: print "Added index "+name
 
     ## allow self.var instead of self['var']
     #def __getattribute__(self,item):
     #    return self[item]
-
-    def copy(self):
-        """
-        RH 27/10/2016
-        Return a copy of the index (to allow edits without changing original)
-        """
-        newInd = ind(ind_start=self['ind_start'], ind_stop=self['ind_stop'], \
-                     blue_start=self['blue_start'], blue_stop=self['blue_stop'], \
-                     red_start=self['red_start'], red_stop=self['red_stop'], \
-                     resol=self['resol'], name=self['name'])
-        return newInd
 
     def augmentIndex(self,ind_start=None, ind_stop=None, \
                      red_start=None, red_stop=None, blue_start=None, blue_stop=None):
@@ -227,8 +182,7 @@ class indlib():
     """
 
     def __init__(self, name=None, ind_start=None, ind_stop=None, blue_start=None, \
-                 blue_stop=None, red_start=None, red_stop=None, resol=None, table=None, \
-                 dicts=None, wavesyst=None, verbose=False):
+                 blue_stop=None, red_start=None, red_stop=None, table=None, dicts=None, verbose=True):
         """
         Set up the index class in two ways depending on input:
         - do single index with individual components specified
@@ -243,40 +197,46 @@ class indlib():
         if table is not None:
             if verbose: print "Adding index elements via table"
             self.table = table
-            self.add_simple_indices_via_table(wavesyst=wavesyst, verbose=verbose)
+            self.add_simple_indices_via_table(verbose=verbose)
+            
         elif dicts is not None:
             if verbose: print "Adding index elements via list of dictionaries"
-            self.add_simple_index_via_dicts(dicts, wavesyst=wavesyst, verbose=verbose)
+            self.add_simple_index_via_dicts(dicts, verbose=verbose)
         else:
             if verbose: print "Adding index element manually via individual elements"
             self.add_simple_index(name=name,ind_start=ind_start, ind_stop=ind_stop, \
                                   blue_start=blue_start, blue_stop=blue_stop, \
-                                  red_start=red_start, red_stop=red_stop, wavesyst=wavesyst, \
-                                  verbose=verbose)
+                                  red_start=red_start, red_stop=red_stop, verbose=verbose)
+
+
 
     # allow self.var instead of self['var']
-    def __getitem__(self,item):
+    def __getitem__(self,item):        
         return getattr(self,item)
 
     def add_simple_index(self, name=None, ind_start=None, ind_stop=None, blue_start=None, \
-                  blue_stop=None, red_start=None, red_stop=None, resol=None, wavesyst=None, verbose=False):
+                  blue_stop=None, red_start=None, red_stop=None, verbose=False):
         """
         Add a single index 'manually'
 
         """
+
+
         # sanity check
         assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
 
         newind = ind(ind_start=ind_start, ind_stop=ind_stop, blue_start=blue_start, \
-                     blue_stop=blue_stop, red_start=red_start, red_stop=red_stop, resol=resol, \
-                     name=name, wavesyst=wavesyst)
+                     blue_stop=blue_stop, red_start=red_start, red_stop=red_stop, name=name)
+
+
         setattr(self,name,newind)
+
         self.nindex+=1
         self.names.append(name)
         if verbose: print "Added index "+name, all
 
     def augment_index(self, name=None, ind_start=None, ind_stop=None, blue_start=None, \
-                  blue_stop=None, red_start=None, red_stop=None, wavesyst=None, verbose=False):
+                  blue_stop=None, red_start=None, red_stop=None, verbose=False):
         """
         Add aditional continuua / features to an existing index
         """
@@ -294,47 +254,39 @@ class indlib():
         setattr(self,name,ind)
         if verbose: print "Augmented index "+name+" to ", ind
 
-    def add_simple_indices_via_table(self, wavesyst=None, verbose=False):
+    def add_simple_indices_via_table(self, verbose=False):
         """
         Add multiple indices through a table
-                
         """
 
-        # ERROR this doesn't work as None has no length, breaking atpy
-        # add resol if not in table
-        #if self.table.keys().count('resol')==0:
-        #    resol = [None for x in xrange(len(self.table))]
-        #    self.table.add_column('resol', resol)
 
-        nind = len(self.table.name)
+        nind = len(self.table['name'])
         current_index=None
+
+
         for ni in xrange(nind):
-            if self.table.name[ni] != '-':
-                self.add_simple_index(name=self.table.name[ni], ind_start=self.table.ind_start[ni], ind_stop=self.table.ind_stop[ni], \
-                                      blue_start=self.table.blue_start[ni], blue_stop=self.table.blue_stop[ni], \
-                                      red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], \
-                                      wavesyst=wavesyst, verbose=verbose) # resol=self.table.resol[ni], 
-                current_index = self.table.name[ni]
+            if self.table['name'][ni] != '-':
+                self.add_simple_index(name=self.table['name'][ni], ind_start=self.table['ind_start'][ni], ind_stop=self.table['ind_stop'][ni], \
+                                      blue_start=self.table['blue_start'][ni], blue_stop=self.table['blue_stop'][ni], \
+                                      red_start=self.table['red_start'][ni], red_stop=self.table['red_stop'][ni], verbose=verbose)
+                current_index = self.table['name'][ni]
             else:
                 assert current_index is not None, "No index preceeding index with name=='-'"
-                self.augment_index(name=current_index, ind_start=self.table.ind_start[ni], ind_stop=self.table.ind_stop[ni], \
-                                   blue_start=self.table.blue_start[ni], blue_stop=self.table.blue_stop[ni], \
-                                   red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], \
-                                   wavesyst=wavesyst, verbose=verbose) # resol=self.table.resol[ni], 
+                self.augment_index(name=current_index, ind_start=self.table['ind_start'][ni], ind_stop=self.table['ind_stop'][ni], \
+                                   blue_start=self.table['blue_start'][ni], blue_stop=self.table['blue_stop'][ni], \
+                                   red_start=self.table['red_start'][ni], red_stop=self.table['red_stop'][ni], verbose=verbose)
 
     def add_simple_index_via_dict(self, index_dict, verbose=False):
         """
         Add a single index via (unspecified) dict class
 
-        This is likely surplus
-        Assume no resolution in dict
+        This is likely surplus 
         """
 
         # make sure dict has all the required attributes, and they're not None
         for cb in self.core_index_tags:
             assert cb in index_dict, "Failed to find attribute "+cb+" in dictionary"
             assert index_dict.get(cb) is not None, "Dictionary has None for attribute "+cb
-            
         setattr(self, index_dict.get('name'), index_dict)
         self.names.append(index_dict.get('name'))
         
@@ -428,47 +380,48 @@ class indlib():
         newLib=indlib(dicts=listOfIndices)
         return newLib
         
+        
+        
 
-def loadLickIndicesAir(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt", atLickRes=False, verbose=False):
+def loadLickIndicesAir(filename="/home/vaughan/Code/sam_python/IndexTools/lickIndicesAir.txt",verbose=False):
     """
     Load the Lick indices from Worthey's website (http://astro.wsu.edu/worthey/html/index.table.html, air wavelengths).
     These are a compilation from Trager et al. (1998) and Worthey & Ottaviani (1997). They are the same as used in TMJ10 models. 
 
     """
 
-    tab = ap.Table(filename, type='ascii')
-    inds = indlib(table=tab, wavesyst="air", verbose=verbose)
-    if atLickRes: inds = addLickRes2IndLib(inds)
+    tab = Table.read(filename, format='ascii')
+    inds = indlib(table=tab, verbose=verbose)
     return inds
 
-def loadLickIndicesVac(filename="/home/houghton/z/data/stellar_pops/lickIndicesAir.txt", atLickRes=False, verbose=False):
+def loadLickIndicesVac(filename="/home/vaughan/Code/sam_python/IndexTools/lickIndicesAir.txt",verbose=False):
     """
     Like above but convert to vacuum wavelengths
     """
-    table = ap.Table(filename, type='ascii')
-    nline, ncol = table.shape
+    
+    table = Table.read(filename, format='ascii')
+    nline=len(table)
+    ncol=len(table.colnames)
     for nli in xrange(nline):
         for nci in xrange(1,ncol-2):
-            table[nli][nci] = st.air2vac(table[nli][nci],verbose=verbose)
-    inds = indlib(table=table, wavesyst="vac", verbose=verbose)
-    # inset Lick resolutions - probably should be done at air wavelengths but surely tiny tiny error
-    if atLickRes: inds = addLickRes2IndLib(inds)
+            table[nli][nci] = air2vac(table[nli][nci],verbose=verbose)
+
+    inds = indlib(table=table, verbose=verbose)
     return inds
 
-def getLickIndices(verbose=False):
-    tab = loadLickIndicesVac()
-    return indlib(table=tab,verbose=verbose)
 
-def loadCvD12IndicesVac(filename="/home/houghton/z/data/stellar_pops/CvDIndicesVac.txt", verbose=False):
+def loadCvD12IndicesVac(filename="/home/houghton/z/data/stellar_pops/CvDIndicesVac.txt"):
     """
-    Load the indicies presented in Table 1 of Conroy & van Dokkum 2012a into indLib
+    Load the indicies presented in Table 1 of Conroy & van Dokkum 2012a
 
     Vacuum wavelengths
 
     """
-    tab = ap.Table(filename, type='ascii')
-    lib = indlib(table=tab, wavesyst="vac", verbose=verbose)
-    return lib
+    tab = Table.read(filename, format='ascii')
+    return tab
+
+def getCvD12Indices(verbose=False):
+    return indlib(table=loadCvD12IndicesVac(),verbose=verbose)
 
 
 def calcMeanFe(Fe1, Fe2, Fe3=None, eFe1=None, eFe2=None, eFe3=None):
@@ -573,232 +526,5 @@ def calcMgFePrime(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
         rlist = MgFeP
 
     return rlist
-
-
-def fitLickRes(data=lickResolutions, order=4, npoints=100, doPlot=True, update=True):
-    """
-    RH 20/10/2016
-
-    Fit the lick resolution as a function of wavelength with a quadratic, using the data from Worthey and Ottaviani, 1997, Table 8.
-    Then update the module global lickResPolyFit, if asked
-
-    With order=4, I get: [  1.23827561e-12,  -2.53065476e-08,   1.94910696e-04, -6.70562662e-01,   8.77800000e+02]
-
-    """
-    global lickResPolyFit
-    xx=np.linspace(data[0].min()*0.9, data[0].max()*1.1, npoints)
-    coef = np.polyfit(data[0], data[1], order)
-    fit = np.polyval(coef, xx)
-
-    if doPlot:
-        pl.plot(data[0], data[1], "ko", label="Data")
-        pl.plot(xx, fit, "r-", label="Polynomial fit")
-
-    if update:
-        lickResPolyFit=coef
-
-    return coef
-
-def addLickRes2IndLib(lib, coefs=lickResPolyFit):
-    """
-    RH 20/10/16
-
-    Cycle through index library, updating the resolution keyword to that of the Lick resolution.
-
-    """
-    indices=lib.names
-    for ind in indices:
-        # calc central feature wavelength
-        clam = np.mean(np.array(lib[ind]['ind_start'] + lib[ind]['ind_stop']))
-        FWHM = np.polyval(lickResPolyFit, clam)
-        lib[ind]['resol']=FWHM
-
-    return lib
-
-
-def calcVelDispIndexCorrection(specs, indexIN, maxVelDisp=500.0, minVelDisp=None, normVelDisp=None, nSample=20, order=4, \
-                               ageMinMax=None, returnAll=False, doPlot=True, verbose=True):
-    """
-    RH 21/10/2016
-
-    Absorption line indices change with the velocity dispersion of the spectra. This routine
-    calculates how a given index changes with increasing galaxy dispersion.
-
-    Note that the spectral resolution of the spectra limit how low in velocity dispersion we can go. 
-
-    e.g.
-
-    s2 = it.calcVelDispIndexCorrection(ms[2], lib['H_beta'], 500.0, None, normVelDisp=200.0, nSample=21, ageMinMax=[1,15])
-    
-    """
-
-    # make a local copy of the index
-    index = indexIN.copy()
-    index['resol']=None # this is not allowed for main index calc loop
-
-    # get central wavelength for index
-    meanLam = np.mean(np.array([index['ind_start'], index['ind_stop']]))
-
-    # check that all spectra on: 1) same resolution, 2) same age grid
-    # get resolution of spectrum - FWHM AA
-    specResAA = specs[0].calcResolution(meanLam)
-    age = specs[0].age
-    for s in specs:
-        assert specResAA==s.calcResolution(meanLam), "Cannot make use of spectra with different resolutions"
-        assert np.all(s.age==age), "Models on different age grids."
-    # get effective dispersion
-    sigmaSpec = (specResAA / meanLam) / np.sqrt(8.*np.log(2.)) * st.c / 1e3
-
-    # define minVelDisp
-    if minVelDisp is None: minVelDisp=sigmaSpec
-    # sanity check
-    assert maxVelDisp > sigmaSpec, "Cannot convolve to the max velocity dispersion, library resolution too coarse"
-    assert minVelDisp >= sigmaSpec, "Cannot convolve to the min velocity dispersion, library resolution too coarse" 
-
-    # make array of disp values
-    outVelDisps = np.linspace(minVelDisp, maxVelDisp, nSample) 
-
-    # now cycle through each spectrum
-    allIndices = []
-    normAllIndices = []
-    for spec in specs:
-        
-        # now loop over disps
-        allInds=[]
-        for n, sig in enumerate(outVelDisps):
-            # cut and convolve
-            if sig==sigmaSpec:
-                cspec = spec
-            else:
-                cspec = st.cutAndGaussVelConvolve(spec, index, sig, verbose=False)
-                if verbose: print "Done convolution for "+str(n)+" of "+str(nSample)+" values of sigma"
-            # calc index
-            inds = cspec.calcIndex(index)
-            allInds.append(inds)
-        ai = np.array(allInds)
-        allIndices.append(ai.T) # convert to array
-
-        # calc the normalising values - do this now to stop resolution errors later
-        if (normVelDisp is None) & (indexIN['resol'] is None):
-            normLoc = 0
-            normVals = ai[normLoc,:]
-        elif (normVelDisp is not None) & (indexIN['resol'] is None):
-            normLoc = np.where(outVelDisps>=normVelDisp)[0][0] # use nearest value (not ideal)
-            actualNormDisp = outVelDisps[normLoc]
-            if normVelDisp != actualNormDisp: print "WARNING: adopting "+str(actualNormDisp)+" as normVelDisp"
-            normVals = ai[normLoc,:]
-        elif (normVelDisp is None) & (indexIN['resol'] is not None):
-            # normalise to Lick value
-            normVals = spec.calcIndex(indexIN)
-        elif (normVelDisp is not None) & (indexIN['resol'] is not None):
-            raise ValueError("Both normVelDisp and index.resolution are both NOT None. Either normalise to Lick resolution or normalise to fixed sigma")
-        else:
-            raise ValueError("How did this happen?")
-        
-        # cut by ages if asked
-        if ageMinMax is not None:
-            aloc = np.where( (spec.age >= ageMinMax[0]) & (spec.age <= ageMinMax[1]))[0]
-            ai = ai[:,aloc]
-            age = spec.age[aloc]
-            normVals=normVals[aloc]
-        else:
-            age = spec.age
-
-        # normalise by values at chosen sigma
-        nai = ai/np.tile(normVals,(nSample,1))
-        normAllIndices.append(nai.T)
-    # make into arrays
-    allIndices=np.array(allIndices)
-    normAllIndices=np.array(normAllIndices)
-    # now reformat array to that Z and age are all on one axis - to average over
-    nailoc = normAllIndices.shape
-    nAI1D = normAllIndices.reshape((nailoc[0]*nailoc[1],nailoc[2])).T
-    
-    # calculate the actual correction polynomial
-    x = (outVelDisps - outVelDisps.min())/(outVelDisps.max()-outVelDisps.min()) # scale from 0 to 1
-    x = (x-0.5)/0.5 # scale from -1 to +1
-    mean = np.mean(nAI1D, axis=1)
-    std  = np.std(nAI1D, axis=1)
-    # make weight array, fixing for 1/0.0 errors
-    w = std
-    w[np.where(std==0.0)] = std[np.where(std!=0.0)].min()*0.01 # 1% of min error
-    w = 1.0/w
-    pcoef = np.polynomial.chebyshev.chebfit(x, mean, deg=order, w=w)
-    polyfit = np.polynomial.chebyshev.chebval(x, pcoef)
-    epcoef = np.polynomial.chebyshev.chebfit(x, std, deg=order,w=None)
-    epolyfit = np.polynomial.chebyshev.chebval(x, epcoef)
-
-    corrector = dispCorr(minVelDisp, maxVelDisp, pcoef, eChebyCoefs=epcoef, outputDisp=normVelDisp)
-
-    rlist = corrector
-
-    if returnAll:
-        extra = [outVelDisps, mean, std, normAllIndices]
-        rlist=[corrector]
-        rlist.append(extra)
-    
-    # plot if asked
-    if doPlot:
-        pl.figure(figsize=(14,8))
-        pl.subplot(121)
-        pl.imshow(np.mean(normAllIndices,axis=0).T)
-        pl.ylabel("Velocity Dispersion (non-linear units)")
-        pl.xlabel("Age (non-linear units)")
-        pl.subplot(122)
-        pl.plot(outVelDisps, nAI1D, alpha=0.3)
-        pl.errorbar(outVelDisps, mean, yerr=std, color="red")
-        pl.plot(outVelDisps, polyfit, "k-")
-        pl.plot(outVelDisps, polyfit+epolyfit, "k:")
-        pl.plot(outVelDisps, polyfit-epolyfit, "k:")
-        pl.ylabel(r'Correction $\sigma_x/\sigma_0$')
-        pl.xlabel(r'$\sigma_x$')
-        fig = pl.gcf()
-        fig.canvas.set_window_title(r'Index correction with dispersion for '+index['name'])
-
-    return rlist
-
-
-class dispCorr():
-    """
-    RH 24/10/16
-
-    Class to calculate, store and apply dispersion corrections for various indices
-    """
-    def __init__(self, minDisp, maxDisp, chebyCoefs, eChebyCoefs=None, outputDisp=200.0):
-        """
-        Initalise the class by assigning memory
-        """
-        self.minS=minDisp
-        self.maxS=maxDisp
-        self.rangeS=maxDisp-minDisp
-        self.coefs=chebyCoefs
-        if eChebyCoefs is not None:
-            self.ecoefs=eChebyCoefs
-        else:
-            self.ecoefs=None
-        # done
-
-    def correct(self, inputDisp, inputIndex, giveError=True):
-        """
-        Calculate the new index value given the input and output dispersions
-        """
-        assert (inputDisp > self.minS) & (inputDisp < self.maxS), \
-               "Input velocity dispersion out of allowed range: "+str(self.minS)+" to "+str(self.maxS)
-        #assert (outputDisp > self.minS) & (outputDisp < self.maxS), \
-        #       "Output velocity dispersion out of allowed range: "+str(self.minS)+" to "+str(self.maxS)
-        # calc scaled x
-        x = (inputDisp-self.minS)/self.rangeS
-        x = (x-0.5)/0.5
-        #xout= (outputDisp-self.minS)/self.rangeS
-        #xout= (xout-0.5)/0.5
-        yval = np.polynomial.chebyshev.chebval(x, self.coefs)
-        #y2 = np.polynomial.chebyshev.chebval(xout, self.coef)
-        rlist = inputIndex/yval
-        if self.ecoefs is not None:
-            eyval = np.polynomial.chebyshev.chebval(x, self.ecoefs)
-            rlist=[inputIndex/yval]
-            rlist.append(eyval)
-
-        return rlist
 
 
