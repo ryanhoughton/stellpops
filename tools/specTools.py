@@ -124,7 +124,7 @@ class spectrum:
             loc = flam.shape
             
             # check for bigger arrays
-            if len(loc)> 2: raise "lamspec not understood"
+            #if len(loc)> 2: raise "lamspec not understood"
 
             # get sizes
             nlam = loc[1]
@@ -175,7 +175,7 @@ class spectrum:
 
         # add age info
         if age is not None:
-            if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
+            #if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
             self.age = singleOrList2Array(age)
             self.logage = np.log10(self.age)
         else:
@@ -197,7 +197,7 @@ class spectrum:
 
         # add metallicitiy
         if Z is not None:
-            if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
+            #if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
             self.Z = singleOrList2Array(Z)
         else:
             self.Z = None
@@ -424,7 +424,7 @@ class spectrum:
                     #else:
                     #    self.efmu.append(None)
 
-            pdb.set_trace()
+            #pdb.set_trace()
         
             
 
@@ -739,7 +739,7 @@ class spectrum:
 
         return cspec
 
-    def gaussVelConvolve(self, vel, sigma, h3h4=None, correct4InstRes=True, nsig=5.0, losvd=None, overwrite=True, verbose=True):
+    def gaussVelConvolve(self, vel, sigma, h3h4=None, correct4InstRes=False, nsig=5.0, losvd=None, overwrite=True, verbose=True):
         """
         Purpose: to convolve the spectrum with a Gaussian of known velocity (V)
                  and width (SIGMA)
@@ -755,20 +755,24 @@ class spectrum:
         velscale = np.min((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 # km/s
         dloglam = np.log10(1.0 + velscale/c*1e3)
         nloglam = np.round((np.log10(self.lam.max())-np.log10(self.lam.min())) / dloglam)
+        nloglam = self.flam.shape[-1]
         self.velscale=velscale
         
         # calc regular loglam grid
         self.loglam = 10.0**np.linspace(np.log10(self.lam[0]), np.log10(self.lam[-1]), nloglam )
+        
 
         count=0
-        self.floglam=[]
-        for flam in self.flam:
+        self.logflam=np.empty_like(self.flam).reshape(-1, self.flam.shape[-1])
+
+        for i, flam in enumerate(self.flam.reshape(-1, self.flam.shape[-1])):
             count=count+1
             # interpolate onto loglam grid
-            self.floglam.append(interpolate(self.lam,flam,self.loglam, fill_value=np.nan, \
-                                            bounds_error=False, method=1, kind='linear'))
-            if verbose: print "Interpolated spec "+str(count)+" of "+str(len(self.flam))
+            self.logflam[i, :]=interpolate(self.lam,flam,self.loglam, fill_value=np.nan, bounds_error=False, method=1, kind='linear')
+            if verbose: print "Interpolated spec {} of {}".format(count, self.logflam.shape[0])
 
+        import ipdb; ipdb.set_trace()
+        self.logflam=self.logflam.reshape(self.flam.shape)
         # if kernel not passed, create it.
         if losvd == None: # speed up if losvd passed
             
@@ -802,16 +806,17 @@ class spectrum:
             losvd=losvd/np.sum(losvd)
 
         count=0
-        self.confloglam=[]
-        self.conflam = []
-        for floglam in self.floglam:
+        #self.confloglam=np.empty_like(self.flam).reshape(-1, self.flam.shape[-1])
+        self.conflam = np.empty_like(self.flam).reshape(-1, self.flam.shape[-1])
+        for i, floglam in enumerate(self.logflam.reshape(-1, self.flam.shape[-1])):
             count=count+1
             confloglam = np.convolve(floglam,losvd,'same')
-            self.confloglam=confloglam
+            #self.confloglam=confloglam
             # interpolate back onto origial grid
-            self.conflam.append(interpolate(self.loglam, self.confloglam, self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear'))
-            if verbose: print "Convolved spec "+str(count)+" of "+str(len(self.floglam))
+            self.conflam[i, :]=interpolate(self.loglam, self.confloglam, self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear')
+            if verbose: print "Convolved spec {} of {}".format(count, self.logflam.shape[0])
 
+        self.conflam=self.conflam.reshape(spec.flam.shape)
         if overwrite:
             self.flam = self.conflam
 

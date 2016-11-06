@@ -1,12 +1,15 @@
 import numpy as np 
-import spectools as s
+import specTools as s
 from astropy.io import fits
 import os
+import scipy.interpolate as si
 
-basedir='/Data/stellar_pops/Miles'
+import glob
+
+basedir='/mnt/sda11/Miles/models'
 
 
-def load_eMILES_spec(filename):
+def _load_single_eMILES_spec(filename, basedir='/mnt/sda11/Miles/models'):
 
     """Load an e-Miles file and return a spectrum class, with attributes like Z, age, etc accessible
 
@@ -57,6 +60,65 @@ def load_eMILES_spec(filename):
     spec=s.spectrum(lamdas, data, userdict=userdict)
     return spec
 
+def load_eMILES_spectra(basedir='/mnt/sda11/Miles/models'):
+
+    #Solar metallicity
+
+    IMFs=['bi0.30', 'bi0.50', 'bi0.80', 'bi1.00', 'bi1.30', 'bi1.50', 'bi1.80', 'bi2.00']
+    Zs=['m2.32', 'm1.71', 'm1.31', 'm0.71', 'm0.40', 'p0.00', 'p0.22']
+    specs={}
+
+    #Work out the lamda array and get the length of the spectrum
+    hdu=fits.open('{}'.format("{}/E{}Z{}T17.7828_iPp0.00_baseFe.fits".format(basedir, 'bi0.30', 'p0.00')))
+    header=hdu[0].header
+    data=hdu[0].data    
+    lamdas=header['CRVAL1']+(np.arange(header['NAXIS1'], dtype=float)+1.0-header['CRPIX1'])*header['CDELT1']
+
+
+
+    for IMF in IMFs:
+        for i, Z in enumerate(Zs):
+
+            #Get all the files with Z=Z and IMF=IMF
+            files=glob.glob("{}/E{}Z{}T??.????_iPp0.00_baseFe.fits".format(basedir, IMF, Z))
+
+            #Sort so the ages are in order
+            files.sort(key=lambda x:float(x.split('T')[-1][:7]))
+
+            #Empty arrays to store all the ages and flams
+            ages=np.empty(len(files))
+            flams=np.empty([len(Zs), len(files), len(data)])
+            for j, file in enumerate(files):
+
+                #Base MILES are fits files, [Na/Fe] enhanced are ascii
+                if file.split('.')[-1]=='fits':
+                    hdu=fits.open('{}'.format(file))
+                    data=hdu[0].data                 
+
+                else:
+                    lamdas, data=np.genfromtxt('{}'.format(file), unpack=True, skip_header=61)
+
+
+                age_pos=file.index('T')+1
+                ages[j]=float(file[age_pos:age_pos+6])
+
+
+                flams[i, j, :]=data
+
+        sp=s.spectrum(lamspec=flams, lam=lamdas, age=ages, Z=Zs, IMF=IMF, model='eMILES', wavesyst="air")
+        specs[IMF]=sp
+
+
+    return specs
+
+
+
+
+
+
+
+
+
 
 def convolve_eMILES_spectra(spec, sigma, verbose=False):
 
@@ -96,34 +158,46 @@ def convolve_eMILES_spectra(spec, sigma, verbose=False):
 
     final_flams=[]
 
-    for d, flam in zip(data, final_spec.flam):
+    
 
-        
 
-        low_lam_spec=s.spectrum(lamdas[lamda_mask], d[lamda_mask])
-        high_lam_spec=s.spectrum(lamdas[~lamda_mask], d[~lamda_mask])
+    low_lam_spec=s.spectrum(lamdas[lamda_mask], data[lamda_mask])
+    high_lam_spec=s.spectrum(lamdas[~lamda_mask], data[~lamda_mask])
 
-        #e-MILES spectral res above 8950A is 60km/s
-        high_lam_specsig=60.0
-        assert sigma>high_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
-        convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
+    #e-MILES spectral res above 8950A is 60km/s
+    high_lam_specsig=60.0
+    assert sigma>high_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
+    convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
 
-        high_lam_spec.gaussConvolve(0.0, convsig, verbose=verbose)
-        high_lam_spec.interp_log_to_lin(verbose=verbose)
+    high_lam_spec.gaussVelConvolve(0.0, convsig, verbose=verbose)
+    # loglams=high_lam_spec.loglam      
+    # interp=si.interp1d(loglams, high_lam_spec.conflam[0], fill_value='extrapolate')
+    # linlams=high_lam_spec.lam
+    # high_lam_flam=interp(linlams)
 
-        #e-MILES spectral res below 8950A is 2.5A
-        
-        #For now, we only care about the spectra around NaI 8190
-        #At this wavelength, with a FWHM of 2.5A, delta v is 39km/s
 
-        low_lam_specsig=39.0
-        assert sigma>low_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
-        convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
+    import ipdb; ipdb.set_trace()
 
-        low_lam_spec.gaussConvolve(0.0, convsig, verbose=verbose)
-        low_lam_spec.interp_log_to_lin(verbose=verbose)
+    #high_lam_spec.interp_log_to_lin(verbose=verbose)
 
-        final_flams.append(np.concatenate([low_lam_spec.flam[0], high_lam_spec.flam[0]]))
+    #e-MILES spectral res below 8950A is 2.5A
+    
+    #For now, we only care about the spectra around NaI 8190
+    #At this wavelength, with a FWHM of 2.5A, delta v is 39km/s
+
+    low_lam_specsig=39.0
+    assert sigma>low_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
+    convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
+
+    low_lam_spec.gaussVelConvolve(0.0, convsig, verbose=verbose)
+    # loglams=low_lam_spec.loglam  
+    # interp=si.interp1d(loglams, low_lam_spec.conflam[0], fill_value='extrapolate')
+    # linlams=low_lam_spec.lam
+    # low_lam_flam=interp(linlams)
+    #low_lam_spec.interp_log_to_lin(verbose=verbose)
+
+
+    final_flams.append(np.concatenate([low_lam_flam, high_lam_flam]))
 
 
     final_spec.flam=np.array(final_flams)
@@ -142,28 +216,27 @@ if __name__=='__main__':
     #Used for testing things
 
     import glob
-    import matplotlib.pyplot as plt
 
-    files=glob.glob("{}/*".format(basedir))
+    specs=load_eMILES_spectra()
 
-    spectra=[]
-    conv_spectra=[]
+    spec=specs['bi1.30']
+    import ipdb; ipdb.set_trace()
 
-    for file in files:
+    spec.gaussVelConvolve(0.0, 200.0)
 
+
+
+    """
+
+    for i, file in enumerate(files):
+
+        print i
+        
         spec=load_eMILES_spec(file)
         spec2=convolve_eMILES_spectra(spec, 200.0)
 
-        disp=spec2.lam[1]-spec2.lam[0]
-
-        print "Z={}, NaFe={}".format(spec2.Z, spec2.NaFe)        
-        NaIsdss, _, _, _=spec2.irindex(disp, 'NaIsdss', vac_or_air='air')
-        FeH, _, _, _=spec2.irindex(disp, 'FeH', vac_or_air='air')
-        print "NaIsdss is {}, FeH is {}".format(NaIsdss, FeH)
-
-        #plt.plot(spec.lam, spec.flam[0])
-        spectra.append(spec)
-        conv_spectra.append(spec2)
+        import ipdb; ipdb.set_trace()
+    """
 
 
 

@@ -1,7 +1,7 @@
 import pylab as pl
 import numpy as np
 from astropy.table import Table
-from spectools import air2vac, vac2air
+from specTools import air2vac, vac2air
 import pdb
 import copy
 
@@ -410,7 +410,7 @@ def loadLickIndicesVac(filename="/home/vaughan/Code/sam_python/IndexTools/lickIn
     return inds
 
 
-def loadCvD12IndicesVac(filename="/home/houghton/z/data/stellar_pops/CvDIndicesVac.txt"):
+def loadCvD12IndicesVac(filename="/mnt/sda11/Miles/stellpops/tools/CvDIndicesVac.txt"):
     """
     Load the indicies presented in Table 1 of Conroy & van Dokkum 2012a
 
@@ -420,8 +420,10 @@ def loadCvD12IndicesVac(filename="/home/houghton/z/data/stellar_pops/CvDIndicesV
     tab = Table.read(filename, format='ascii')
     return tab
 
-def getCvD12Indices(verbose=False):
+def getCvD12IndicesVac(verbose=False):
     return indlib(table=loadCvD12IndicesVac(),verbose=verbose)
+
+
 
 
 def calcMeanFe(Fe1, Fe2, Fe3=None, eFe1=None, eFe2=None, eFe3=None):
