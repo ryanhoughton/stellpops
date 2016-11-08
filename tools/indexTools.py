@@ -29,7 +29,11 @@ prettyPrint = {'CN_1':r'CN$_1$', \
                'Hdelta_A':r'H$\delta_A$', \
                'Hdelta_F':r'H$\delta_F$', \
                'Hgamma_A':r'H$\gamma_A$', \
-               'Hgamma_F':r'H$\gamma_F$'}
+               'Hgamma_F':r'H$\gamma_F$', \
+               'CaII86': r'CaT', \
+               'FeH': r'FeH', \
+               'NaIsdss': r'NaI$_{SDSS}$'
+               }
 
 
 # from Worthey and Ottaviani, 1997, Table 8, Wavelength in AA and FWHM in AA.
@@ -49,6 +53,10 @@ class ind(dict):
         Initalise class
 
         NOTE THAT CONT_START AND CONT_STOP ARE DEFINED INTERNALLY AND USED TO INITALISE (used for index calc)
+
+        #Added by SPV:
+        If the index doesn't have a feature defintion, we assume that ind_start and ind_stop will be set to negative numbers. In this case,
+        set nfeat=0.0
         """
 
         assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
@@ -62,7 +70,12 @@ class ind(dict):
         ind = {'ind_start':np.atleast_1d(ind_start).tolist(), 'ind_stop':np.atleast_1d(ind_stop).tolist()}
         cont = {'cont_start':cont_start, 'cont_stop':cont_stop, \
                 'blue_start':blue_start, 'blue_stop':blue_stop, 'red_start':red_start, 'red_stop':red_stop}
-        nfeat = {'nfeat':1}
+
+        #Check if our wavelengths for the index feature are positive. If not, assume they don't exist and set nfeat to 0.
+        if ind_start <0.0 or ind_stop<0.0:
+            nfeat = {'nfeat':0}
+        else:
+            nfeat = {'nfeat':1}
         ncont = {'ncont':2}
         ID = {'name':name}
         t = {'simpleIndex': True}
@@ -88,28 +101,44 @@ class ind(dict):
         MUST SPECIFY RED AND BLUE CONTINUUA SEPARATELY
         
         """
+        import pdb; pdb.set_trace()
+
+        #make everything at least a list
+        self['blue_start']=np.atleast_1d(self['blue_start']).tolist()
+        self['blue_stop']=np.atleast_1d(self['blue_stop']).tolist()
+        self['red_start']=np.atleast_1d(self['red_start']).tolist()
+        self['red_stop']=np.atleast_1d(self['red_stop']).tolist()
+
         # add new features
         if (type(ind_start)!=type(None)) & (type(ind_stop)!=type(None)):
-            assert len(ind_start)==len(ind_stop), 'Non-equal number of start and stop positions for new feature'
+            #assert len(ind_start)==len(ind_stop), 'Non-equal number of start and stop positions for new feature'
+
+
             self['ind_start'].extend([ind_start])
             self['ind_stop'].extend([ind_stop])
+
             self['nfeat']+=1
         # add new blue cont
         if (type(blue_start)!=type(None)) & (type(blue_stop)!=type(None)):
-            assert len(blue_start)==len(blue_stop), 'Non-equal number of start/stop positions for new blue continuum'
-            self['blue_start'].extend([blue_start])
-            self['blue_stop'].extend([blue_stop])
-            self['cont_start'].extend([blue_start])
-            self['cont_stop'].extend([blue_stop])
+            #assert len(blue_start)==len(blue_stop), 'Non-equal number of start/stop positions for new blue continuum'
+
+            self['blue_start'].extend(blue_start)
+            self['blue_stop'].extend(blue_stop)
+            self['cont_start'].extend(blue_start)
+            self['cont_stop'].extend(blue_stop)
+
             self['ncont']+=1
         # add new red cont
         if (type(red_start)!=type(None)) & (type(red_stop)!=type(None)):
-            assert len(red_start)==len(red_stop), 'Non-equal number of start/stop positions for new red continuum'
-            self['red_start'].extend([red_start])
-            self['red_stop'].extend([red_stop])
-            self['cont_start'].extend([red_start])
-            self['cont_stop'].extend([red_stop])
+            #assert len(red_start)==len(red_stop), 'Non-equal number of start/stop positions for new red continuum'
+
+            self['red_start'].extend(red_start)
+            self['red_stop'].extend(red_stop)
+            self['cont_start'].append(red_start)
+            self['cont_stop'].append(red_stop)
+
             self['ncont']+=1
+
         # label as NOT SIMPLE
         self['simpleIndex']=False
 
@@ -131,14 +160,17 @@ class ind(dict):
                    ind_stop=list(np.atleast_1d(self['ind_stop'])*(1.0+redshift)))
         return newind
 
-    def plotIndexBands(self, scale=1.0, alpha=0.1, contCol='blue', indCol='red', \
+    def plotIndexBands(self, ax=None, scale=1.0, alpha=0.1, contCol='blue', indCol='red', \
                        ymin=-100.0, ymax=100.0, autoy=False, noContinuua=False, \
-                       addLabel=True, justLine=True, linePos=0.9, labelPos=0.95, \
+                       addLabel=True, justLine=False, linePos=0.9, labelPos=0.95, \
                        labelSize=20.0, showHorizLine=False, usePrettyPrint=True):
         """
         Overplot the regions used for continuum and feature bandpasses
         
         """
+
+        if ax is None:
+            fig, ax=pl.subplots()
 
         if autoy:
             gca=pl.gca()
@@ -239,20 +271,40 @@ class indlib():
                   blue_stop=None, red_start=None, red_stop=None, verbose=False):
         """
         Add aditional continuua / features to an existing index
-        """
+        """ 
+        print "Augmenting {} with ind: {}, {}; blue: {}, {}; red {}, {}".format(name, ind_start, ind_stop, blue_start, blue_stop, red_start, red_stop)
+        self[name].augmentIndex(ind_start=ind_start, ind_stop=ind_stop, blue_start=blue_start, blue_stop=blue_stop, red_start=red_start, red_stop=red_stop)
 
-        # sanity checks
-        assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
-        assert hasattr(self, name), "This index is not defined, so we cannot augment it"
 
-        #ind = getattr(self, name)
-        #ind['ind_start'].extend([ind_start])
-        #ind['ind_stop'].extend([ind_stop])
-        #ind['cont_start'].extend([ind_start])
-        #ind['cont_stop'].extend([ind_stop])
-        #ind['nfeat']+=1
-        setattr(self,name,ind)
-        if verbose: print "Augmented index "+name+" to ", ind
+        # # sanity checks
+        # assert np.any(map(lambda a: a is not None, locals())), "One of the required inputs was not defined"
+        # assert hasattr(self, name), "This index is not defined, so we cannot augment it"
+
+        # # add new features
+        # if (type(ind_start)!=type(None)) & (type(ind_stop)!=type(None)):
+        #     #assert len(list(ind_start))==len(ind_stop), 'Non-equal number of start and stop positions for new feature'
+        #     self['ind_start'].extend([ind_start])
+        #     self['ind_stop'].extend([ind_stop])
+        #     self['nfeat']+=1
+        # # add new blue cont
+        # if (type(blue_start)!=type(None)) & (type(blue_stop)!=type(None)):
+        #     #assert len(blue_start)==len(blue_stop), 'Non-equal number of start/stop positions for new blue continuum'
+        #     self['blue_start'].extend([blue_start])
+        #     self['blue_stop'].extend([blue_stop])
+        #     self['cont_start'].extend([blue_start])
+        #     self['cont_stop'].extend([blue_stop])
+        #     self['ncont']+=1
+        # # add new red cont
+        # if (type(red_start)!=type(None)) & (type(red_stop)!=type(None)):
+        #     #assert len(red_start)==len(red_stop), 'Non-equal number of start/stop positions for new red continuum'
+        #     self['red_start'].extend([red_start])
+        #     self['red_stop'].extend([red_stop])
+        #     self['cont_start'].extend([red_start])
+        #     self['cont_stop'].extend([red_stop])
+        #     self['ncont']+=1
+        # # label as NOT SIMPLE
+        # self['simpleIndex']=False
+        # if verbose: print "Augmented index "+name+" to ", ind
 
     def add_simple_indices_via_table(self, verbose=False):
         """
@@ -271,6 +323,7 @@ class indlib():
                                       red_start=self.table['red_start'][ni], red_stop=self.table['red_stop'][ni], verbose=verbose)
                 current_index = self.table['name'][ni]
             else:
+
                 assert current_index is not None, "No index preceeding index with name=='-'"
                 self.augment_index(name=current_index, ind_start=self.table['ind_start'][ni], ind_stop=self.table['ind_stop'][ni], \
                                    blue_start=self.table['blue_start'][ni], blue_stop=self.table['blue_stop'][ni], \
@@ -407,6 +460,8 @@ def getLickIndicesVac(filename="/Data/stellarpops/index_definitions/lickIndicesA
             table[nli][nci] = air2vac(table[nli][nci],verbose=verbose)
 
     inds = indlib(table=table, verbose=verbose)
+
+
     return inds
 
 
@@ -420,6 +475,23 @@ def getCvD12IndicesVac(filename="/Data/stellarpops/index_definitions/CvDIndicesV
     tab = Table.read(filename, format='ascii')
 
     inds=indlib(table=tab,verbose=verbose)
+
+
+
+    # #Make a combind CaT index from CaII86_1, _2 and _3
+
+    # #Start with a simple index of definition 1
+    # inds.add_simple_index(name='CaT', ind_start=inds.CaII86_1['ind_start'], ind_stop=inds.CaII86_1['ind_stop'], blue_start=inds.CaII86_1['blue_start'], \
+    #               blue_stop=inds.CaII86_1['blue_stop'], red_start=inds.CaII86_1['red_start'], red_stop=inds.CaII86_1['red_stop'])
+
+    # #Augment the index with definitions 2 and 3
+    # inds.augmentIndex(ind_start=inds.CaII86_2['ind_start'], ind_stop=inds.CaII86_2['ind_stop'], blue_start=inds.CaII86_2['blue_start'], \
+    #               blue_stop=inds.CaII86_2['blue_stop'], red_start=inds.CaII86_2['red_start'], red_stop=inds.CaII86_2['red_stop'])
+    # inds.augmentIndex(ind_start=inds.CaII86_3['ind_start'], ind_stop=inds.CaII86_3['ind_stop'], blue_start=inds.CaII86_3['blue_start'], \
+    #               blue_stop=inds.CaII86_3['blue_stop'], red_start=inds.CaII86_3['red_start'], red_stop=inds.CaII86_3['red_stop'])
+
+
+
 
     return inds
 
@@ -440,6 +512,32 @@ def getCvD12IndicesAir(filename="/Data/stellarpops/index_definitions/CvDIndicesV
 
 
     inds=indlib(table=tab,verbose=verbose)
+
+
+
+    # self.ca = np.array((8484., 8513., 8522., 8562., 8642., 8682.))
+    # self.pa = np.array((8461., 8474., 8577., 8619., 8730., 8772.))
+    # self.cacont = np.array((8474.,8484.,8563.,8577.,8619.,
+    #                     8642.,8700.,8725.,8776.,8792.))
+
+    inds.add_simple_index('CaT', )
+    
+    #Start with a simple index of definition 1
+    inds.add_simple_index(name='CaT', ind_start=inds.CaII86_1['ind_start'], ind_stop=inds.CaII86_1['ind_stop'], blue_start=inds.CaII86_1['blue_start'], \
+                  blue_stop=inds.CaII86_1['blue_stop'], red_start=inds.CaII86_1['red_start'], red_stop=inds.CaII86_1['red_stop'])
+
+
+
+    #Augment the index with definitions 2 and 3
+    inds.CaT.augmentIndex(ind_start=inds.CaII86_2['ind_start'], ind_stop=inds.CaII86_2['ind_stop'])
+
+    inds.CaT.augmentIndex(ind_start=inds.CaII86_3['ind_start'], ind_stop=inds.CaII86_3['ind_stop'], blue_start=inds.CaII86_3['blue_start'], \
+                  blue_stop=inds.CaII86_3['blue_stop'], red_start=inds.CaII86_3['red_start'], red_stop=inds.CaII86_3['red_stop'])
+
+    inds.CaT.augmentIndex(red_start=inds.CaII86_last_cont_band['red_start'], red_stop=inds.CaII86_last_cont_band['red_stop'])
+
+
+    
 
     return inds
 

@@ -1596,7 +1596,10 @@ def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot
     """
     
     global sigmaInFWHM, c
-    meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
+    if index['nfeat']>0.0:
+        meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
+    else:
+        meanWave = np.mean(np.array([index['blue_start'],index['red_stop']]))
 
     d1, d2, d3=longSpec.flam.shape
 
@@ -1897,112 +1900,125 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
 ##            ys = alpha2*xs + alpha1
 ##            pl.plot(SED[:,0], SED[:,1], 'k-', xs, ys, 'r--')
 ##            pl.show()
-
-        # Calculate the index
-        # init
+        
+        #Added by SPV to account for the TiO index (which has no fature definition- it's just a ratio of blue and red continuua)
         ind = 0.; ind_var_tot = 0.
         ind_var_1 = 0.; ind_var_2 = 0.
-        for j in xrange(index['nfeat']):
-            #Find first and last data indices within bandpass
-            a = np.where(SED[:,0] > index['ind_start'][j])[0][0]
-            b = np.where(SED[:,0] < index['ind_stop'][j])[0][-1]
-            #Determine which pixel is closest to start and end of bandpass
-            # RH doc: determine if a,b pixels currently overlap with bandpass edges or not
-            # if not, extend a,b so that they do. 
-            if (index['ind_start'][j] - SED[a-1,0]) < (SED[a,0] - index['ind_start'][j]):
-                a -= 1
-            if (index['ind_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['ind_stop'][j]):
-                b += 1
-            # Multiplicative factors for start and end pixels
-            Cstart_c = (SED[a,0] - index['ind_start'][j] + 0.5*disp)/disp  
-            Cend_c = (index['ind_stop'][j] - SED[b,0] + 0.5*disp)/disp 
+        if index['nfeat']>0:
+            # Calculate the index
+            # init
+            
+            
+            for j in xrange(index['nfeat']):
+                #Find first and last data indices within bandpass
+                a = np.where(SED[:,0] > index['ind_start'][j])[0][0]
+                b = np.where(SED[:,0] < index['ind_stop'][j])[0][-1]
+                #Determine which pixel is closest to start and end of bandpass
+                # RH doc: determine if a,b pixels currently overlap with bandpass edges or not
+                # if not, extend a,b so that they do. 
+                if (index['ind_start'][j] - SED[a-1,0]) < (SED[a,0] - index['ind_start'][j]):
+                    a -= 1
+                if (index['ind_stop'][j] - SED[b,0]) > (SED[b+1,0] - index['ind_stop'][j]):
+                    b += 1
+                # Multiplicative factors for start and end pixels
+                Cstart_c = (SED[a,0] - index['ind_start'][j] + 0.5*disp)/disp  
+                Cend_c = (index['ind_stop'][j] - SED[b,0] + 0.5*disp)/disp 
 
-            Cvals = SED[a:b+1,:]
+                Cvals = SED[a:b+1,:]
 
-            contys = alpha2*Cvals[:,0] + alpha1
-            Ccontvals = np.column_stack((Cvals[:,0],contys))
+                contys = alpha2*Cvals[:,0] + alpha1
+                Ccontvals = np.column_stack((Cvals[:,0],contys))
 
-            array = (1-Cvals[:,1]/Ccontvals[:,1])
-            array[0] *= Cstart_c
-            array[-1] *= Cend_c
-            value = disp*np.sum(array)
-            ind += value
+                array = (1-Cvals[:,1]/Ccontvals[:,1])
+                array[0] *= Cstart_c
+                array[-1] *= Cend_c
+                value = disp*np.sum(array)
+                ind += value
 
-            ###ERRORS:
-            if var_SED is not None:
-                #Index error:
-                Cerrvals = var_SED[a:b+1,:]
+                ###ERRORS:
+                if var_SED is not None:
+                    #Index error:
+                    Cerrvals = var_SED[a:b+1,:]
 
-                ind_cont_var = np.zeros(len(Ccontvals),dtype=float)
-                #Loop over continuum feature pixels
-                for x in xrange(len(ind_cont_var)): 
-                    #Calculate continuum variance:
-                    Cvar_cont = 0.
-                    for i in xrange(index['ncont']):
-                        #Find first and last data indices within bandpass
-                        ia = np.where(SED[:,0] > index['cont_start'][i])[0][0]
-                        ib = np.where(SED[:,0] < index['cont_stop'][i])[0][-1]
-                        #Determine which pixel is closest to start and end of bandpass
-                        if (index['cont_start'][i] - SED[ia-1,0]) < (SED[ia,0] - index['cont_start'][i]):
-                            ia -= 1
-                        if (index['cont_stop'][i] - SED[ib,0]) > (SED[ib+1,0] - index['cont_stop'][i]):
-                            ib += 1      
-                        #Extract relevent region of SED and variance SED
-                        contvals = np.copy(SED[ia:ib+1,:])
-                        var_contvals = np.copy(var_SED[ia:ib+1,:])
-                        #Apply equation
-                        contsum = ((1/delta)*((1/var_contvals[:,1])*eps3 - (contvals[:,0]/var_contvals[:,1])*eps2)\
-                                  + (Ccontvals[x,0]/delta)*((contvals[:,0]/var_contvals[:,1])*eps1\
-                                                            - (1/var_contvals[:,1])*eps2))**2.*var_contvals[:,1]
-                        Cvar_cont += np.sum(contsum)
-                    ind_cont_var[x] = Cvar_cont
+                    ind_cont_var = np.zeros(len(Ccontvals),dtype=float)
+                    #Loop over continuum feature pixels
+                    for x in xrange(len(ind_cont_var)): 
+                        #Calculate continuum variance:
+                        Cvar_cont = 0.
+                        for i in xrange(index['ncont']):
+                            #Find first and last data indices within bandpass
+                            ia = np.where(SED[:,0] > index['cont_start'][i])[0][0]
+                            ib = np.where(SED[:,0] < index['cont_stop'][i])[0][-1]
+                            #Determine which pixel is closest to start and end of bandpass
+                            if (index['cont_start'][i] - SED[ia-1,0]) < (SED[ia,0] - index['cont_start'][i]):
+                                ia -= 1
+                            if (index['cont_stop'][i] - SED[ib,0]) > (SED[ib+1,0] - index['cont_stop'][i]):
+                                ib += 1      
+                            #Extract relevent region of SED and variance SED
+                            contvals = np.copy(SED[ia:ib+1,:])
+                            var_contvals = np.copy(var_SED[ia:ib+1,:])
+                            #Apply equation
+                            contsum = ((1/delta)*((1/var_contvals[:,1])*eps3 - (contvals[:,0]/var_contvals[:,1])*eps2)\
+                                      + (Ccontvals[x,0]/delta)*((contvals[:,0]/var_contvals[:,1])*eps1\
+                                                                - (1/var_contvals[:,1])*eps2))**2.*var_contvals[:,1]
+                            Cvar_cont += np.sum(contsum)
+                        ind_cont_var[x] = Cvar_cont
 
-                Carray_var_1 = (Ccontvals[:,1]**2*Cerrvals[:,1] + Cvals[:,1]**2*ind_cont_var)/\
-                             Ccontvals[:,1]**4.
-                Carray_var_1[0] *= Cstart_c
-                Carray_var_1[-1] *= Cend_c
-                ind_var_1 += np.sum(Carray_var_1)
+                    Carray_var_1 = (Ccontvals[:,1]**2*Cerrvals[:,1] + Cvals[:,1]**2*ind_cont_var)/\
+                                 Ccontvals[:,1]**4.
+                    Carray_var_1[0] *= Cstart_c
+                    Carray_var_1[-1] *= Cend_c
+                    ind_var_1 += np.sum(Carray_var_1)
 
-                #For part 2 of equation which includes covariance matrix:
-                #Loop over pixels in spectral feature
-                for y in xrange(len(Cvals[:,0])):
-                    #Loop over first spectral feature
-                    for z in xrange(index['nfeat']):
-                        #Find first and last data indices within bandpass
-                        iia = np.where(SED[:,0] > index['ind_start'][z])[0][0]
-                        iib = np.where(SED[:,0] < index['ind_stop'][z])[0][-1]
-                        #Determine which pixel is closest to start and end of bandpass
-                        if (index['ind_start'][z] - SED[iia-1,0]) < (SED[iia,0] - index['ind_start'][z]):
-                            iia -= 1
-                        if (index['ind_stop'][z] - SED[iib,0]) > (SED[iib+1,0] - index['ind_stop'][z]):
-                            iib += 1
-                        #Multiplicative factors for start and end pixels
-                        Fstart_c = (SED[iia,0] - index['ind_start'][z] + 0.5*disp)/float(disp)
-                        Fend_c = (index['ind_stop'][z] - SED[iib,0] + 0.5*disp)/float(disp)
+                    #For part 2 of equation which includes covariance matrix:
+                    #Loop over pixels in spectral feature
+                    for y in xrange(len(Cvals[:,0])):
+                        #Loop over first spectral feature
+                        for z in xrange(index['nfeat']):
+                            #Find first and last data indices within bandpass
+                            iia = np.where(SED[:,0] > index['ind_start'][z])[0][0]
+                            iib = np.where(SED[:,0] < index['ind_stop'][z])[0][-1]
+                            #Determine which pixel is closest to start and end of bandpass
+                            if (index['ind_start'][z] - SED[iia-1,0]) < (SED[iia,0] - index['ind_start'][z]):
+                                iia -= 1
+                            if (index['ind_stop'][z] - SED[iib,0]) > (SED[iib+1,0] - index['ind_stop'][z]):
+                                iib += 1
+                            #Multiplicative factors for start and end pixels
+                            Fstart_c = (SED[iia,0] - index['ind_start'][z] + 0.5*disp)/float(disp)
+                            Fend_c = (index['ind_stop'][z] - SED[iib,0] + 0.5*disp)/float(disp)
 
-                        Fvals = SED[iia:iib+1,:]
-                        Fcontys = alpha2*Fvals[:,0] + alpha1
-                        Fcontvals = np.column_stack((Fvals[:,0],Fcontys))
-                        #Loop over pixels in second spectral feature
-                        for zz in xrange(len(Fvals[:,0])):
-                            cov_part = ((1/delta**2)*(eps1*eps3*eps3-eps2*eps2*eps3))+\
-                                       ((1/delta**2)*(eps2*eps2*eps2-eps1*eps2*eps3))*(Cvals[y,0] + Fvals[zz,0])+\
-                                       ((1/delta**2)*(eps1*eps1*eps3-eps1*eps2*eps2))*(Cvals[y,0]*Fvals[zz,0])
+                            Fvals = SED[iia:iib+1,:]
+                            Fcontys = alpha2*Fvals[:,0] + alpha1
+                            Fcontvals = np.column_stack((Fvals[:,0],Fcontys))
+                            #Loop over pixels in second spectral feature
+                            for zz in xrange(len(Fvals[:,0])):
+                                cov_part = ((1/delta**2)*(eps1*eps3*eps3-eps2*eps2*eps3))+\
+                                           ((1/delta**2)*(eps2*eps2*eps2-eps1*eps2*eps3))*(Cvals[y,0] + Fvals[zz,0])+\
+                                           ((1/delta**2)*(eps1*eps1*eps3-eps1*eps2*eps2))*(Cvals[y,0]*Fvals[zz,0])
 
-                            part_2_num = (Cvals[y,1]*Fvals[zz,1]*cov_part)/(Ccontvals[y,1]**2*Fcontvals[zz,1]**2)
-                            #edge pixel factors
-                            if y == 0.:
-                                part_2_num *= Cstart_c
-                            if zz == 0.:
-                                part_2_num *= Fstart_c
-                            if y == (len(Cvals[:,0])-1):
-                                part_2_num *= Cend_c
-                            if zz == (len(Fvals[:,0])-1):
-                                part_2_num *= Fend_c
+                                part_2_num = (Cvals[y,1]*Fvals[zz,1]*cov_part)/(Ccontvals[y,1]**2*Fcontvals[zz,1]**2)
+                                #edge pixel factors
+                                if y == 0.:
+                                    part_2_num *= Cstart_c
+                                if zz == 0.:
+                                    part_2_num *= Fstart_c
+                                if y == (len(Cvals[:,0])-1):
+                                    part_2_num *= Cend_c
+                                if zz == (len(Fvals[:,0])-1):
+                                    part_2_num *= Fend_c
 
-                            ind_var_2 += part_2_num
+                                ind_var_2 += part_2_num
 
-                ind_var_tot = disp**2*(ind_var_1 + ind_var_2)
+                    ind_var_tot = disp**2*(ind_var_1 + ind_var_2)
+
+        else:
+            print "No Feature bandpass. Assuming we want the TiO index"
+            print "AT THE MOMENT THIS DOESN'T TAKE THE VARIANCE SPECTRUM INTO ACCOUNT"
+            blue_cval=alpha1+alpha2*(np.mean(np.array(index['blue_start'], index['blue_stop'])))
+            red_cval=alpha1+alpha2*(np.mean(np.array(index['red_start'],index['red_stop'])))
+
+            ind = blue_cval/float(red_cval)
+
 
         if verbose: print index['name']+' = %.3f pm %.3f Angstroms' % (ind, np.sqrt(ind_var_tot))
         indices[spec] = ind

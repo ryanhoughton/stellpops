@@ -127,10 +127,14 @@ def cut_and_measure_index(spec, index, out_sigma, index_type='Cenarro'):
     """
 
     #If the index red stop is less than 8950, the model resolution is FWHM of 2.5A
+    if index['name']=='CaII86':
+        import pdb; pdb.set_trace()
+    if np.atleast_1d(np.array(index['red_stop']))[-1]<8950.0:
 
-    if index['red_stop']<8950.0:
-
-        model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['ind_start'][0]*1000.0)
+        if index['nfeat']>0.0:
+            model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['ind_start'][0]*1000.0)
+        else:
+            model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['blue_stop']*1000.0)
 
         assert out_sigma > model_sigma, 'Cant convolve to a resolution below the model resolution'
         conv_sigma=np.sqrt(out_sigma**2 - model_sigma**2)

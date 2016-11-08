@@ -96,6 +96,10 @@ if __name__=='__main__':
     array_indices_dict=M16.get_np_indices_for_params()
 
 
-    fig, ax=plt.subplots()
+    fig, axs=plt.subplots(nrows=3, ncols=1)
 
-    ax=index_index_map(ax, specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='Z', fixed_value=10.0)
+
+    axs[0]=index_index_map(axs[0], specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='Z', fixed_value=10.0)
+    axs[1]=index_index_map(axs[1], specs, CvDinds.FeH99, CvDinds.TiO89, vary='Z', fixed_value=10.0)
+    axs[2]=index_index_map(axs[2], specs, CvDinds.FeH99, CvDinds.CaII86, vary='Z', fixed_value=10.0)
+
