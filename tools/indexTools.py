@@ -383,7 +383,7 @@ class indlib():
         
         
 
-def loadLickIndicesAir(filename="/home/vaughan/Code/sam_python/IndexTools/lickIndicesAir.txt",verbose=False):
+def getLickIndicesAir(filename="/Data/stellarpops/index_definitions/lickIndicesAir.txt",verbose=False):
     """
     Load the Lick indices from Worthey's website (http://astro.wsu.edu/worthey/html/index.table.html, air wavelengths).
     These are a compilation from Trager et al. (1998) and Worthey & Ottaviani (1997). They are the same as used in TMJ10 models. 
@@ -394,7 +394,7 @@ def loadLickIndicesAir(filename="/home/vaughan/Code/sam_python/IndexTools/lickIn
     inds = indlib(table=tab, verbose=verbose)
     return inds
 
-def loadLickIndicesVac(filename="/home/vaughan/Code/sam_python/IndexTools/lickIndicesAir.txt",verbose=False):
+def getLickIndicesVac(filename="/Data/stellarpops/index_definitions/lickIndicesAir.txt",verbose=False):
     """
     Like above but convert to vacuum wavelengths
     """
@@ -410,7 +410,7 @@ def loadLickIndicesVac(filename="/home/vaughan/Code/sam_python/IndexTools/lickIn
     return inds
 
 
-def loadCvD12IndicesVac(filename="/mnt/sda11/Miles/stellpops/tools/CvDIndicesVac.txt"):
+def getCvD12IndicesVac(filename="/Data/stellarpops/index_definitions/CvDIndicesVac.txt", verbose=True):
     """
     Load the indicies presented in Table 1 of Conroy & van Dokkum 2012a
 
@@ -418,10 +418,31 @@ def loadCvD12IndicesVac(filename="/mnt/sda11/Miles/stellpops/tools/CvDIndicesVac
 
     """
     tab = Table.read(filename, format='ascii')
-    return tab
 
-def getCvD12IndicesVac(verbose=False):
-    return indlib(table=loadCvD12IndicesVac(),verbose=verbose)
+    inds=indlib(table=tab,verbose=verbose)
+
+    return inds
+
+def getCvD12IndicesAir(filename="/Data/stellarpops/index_definitions/CvDIndicesVac.txt", verbose=True):
+    """
+    Load the indicies presented in Table 1 of Conroy & van Dokkum 2012a
+
+    Vacuum wavelengths
+
+    """
+    tab = Table.read(filename, format='ascii')
+    nline=len(tab)
+    ncol=len(tab.colnames)
+    for nli in xrange(nline):
+        for nci in xrange(1,ncol):
+            tab[nli][nci] = vac2air(tab[nli][nci],verbose=verbose)
+
+
+
+    inds=indlib(table=tab,verbose=verbose)
+
+    return inds
+
 
 
 

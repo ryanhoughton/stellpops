@@ -771,7 +771,7 @@ class spectrum:
             self.logflam[i, :]=interpolate(self.lam,flam,self.loglam, fill_value=np.nan, bounds_error=False, method=1, kind='linear')
             if verbose: print "Interpolated spec {} of {}".format(count, self.logflam.shape[0])
 
-        import ipdb; ipdb.set_trace()
+
         self.logflam=self.logflam.reshape(self.flam.shape)
         # if kernel not passed, create it.
         if losvd == None: # speed up if losvd passed
@@ -813,10 +813,10 @@ class spectrum:
             confloglam = np.convolve(floglam,losvd,'same')
             #self.confloglam=confloglam
             # interpolate back onto origial grid
-            self.conflam[i, :]=interpolate(self.loglam, self.confloglam, self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear')
-            if verbose: print "Convolved spec {} of {}".format(count, self.logflam.shape[0])
+            self.conflam[i, :]=interpolate(self.loglam, confloglam, self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear')
+            if verbose: print "Convolved spec {} of {}".format(count, self.conflam.shape[0])
 
-        self.conflam=self.conflam.reshape(spec.flam.shape)
+        self.conflam=self.conflam.reshape(self.flam.shape)
         if overwrite:
             self.flam = self.conflam
 
@@ -1572,7 +1572,7 @@ def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=5
     return cutSpec
 
 
-def cutAndGaussVelConvolve(longSpec, index, outputSigma, currentFWHM=None, doPlot=False, verbose=True):
+def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot=False, verbose=True):
     """
     RH 18/10/2016
 
@@ -1591,11 +1591,17 @@ def cutAndGaussVelConvolve(longSpec, index, outputSigma, currentFWHM=None, doPlo
      - index      : the index definition, used to cut spec to right size
      - outputSigma: the desired output velocity dispersion in km/s
      - currentFWHM: the current spectral resolution (FWHM) in AA
-     - verbose    : print stuff, can get anoying
+     - verbose    : print stuff, can get annoying
 
     """
+    
     global sigmaInFWHM, c
     meanWave = np.mean(np.array([index['ind_start'],index['ind_stop']]))
+
+    d1, d2, d3=longSpec.flam.shape
+
+
+    """
     # sort inputs
     if currentFWHM is None:
         currentFWHM = longSpec.calcResolution(meanWave)
@@ -1606,23 +1612,28 @@ def cutAndGaussVelConvolve(longSpec, index, outputSigma, currentFWHM=None, doPlo
     kernelSigma= kernelFWHM/sigmaInFWHM
     assert outputFWHM > currentFWHM, "Cannot convole to a lower resolution than already have."
     if verbose: print "In FWHM="+str(currentFWHM)+", out FWHM="+str(outputFWHM)+", kernel FWHM="+str(kernelFWHM)
+    """
 
     # define cut spectrum edges
-    cutlow = (index['blue_start'] - 5.0*kernelSigma)
-    cuthigh= (index['red_stop']   + 5.0*kernelSigma)
+    #conv_sigma = kernelSigma/meanWave*c/1e3 so kernalSigma=conv_sigma*meanWave*1e3/c
+    cutlow = (index['blue_start'] - 5.0*conv_sigma*meanWave*1e3/c)
+    cuthigh= (index['red_stop']   + 5.0*conv_sigma*meanWave*1e3/c)
 
     # cut spec
     cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
     assert len(cloc)!=0, "Found no matching wavelengths"
     clam  = longSpec.lam[cloc]
-    cflam=[]
-    for s in longSpec.flam:
-        cflam.append(s[cloc])
-    cutSpec = spectrum(lam=clam, lamspec=cflam)
+    cflam=np.empty((d1*d2, len(clam)))
+    for j, spec in enumerate(longSpec.flam.reshape(-1, d3)):
+        cflam[j, :]=spec[cloc]
 
+    cflam=cflam.reshape(d1, d2, len(clam))
+
+    cutSpec = spectrum(lam=clam, lamspec=cflam, wavesyst=longSpec.wavesyst)
+    
     # convolve
-    velSigma = kernelSigma/meanWave*c/1e3
-    cutSpec.gaussVelConvolve(0.0, velSigma, correct4InstRes=False, overwrite=True, verbose=verbose)
+    #conv_sigma = kernelSigma/meanWave*c/1e3
+    cutSpec.gaussVelConvolve(0.0, conv_sigma, correct4InstRes=False, overwrite=True, verbose=verbose)
 
     # do plot if asked
     if doPlot:
@@ -1680,7 +1691,10 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
     #if not hasattr(spectrum,'eflam'):
     # loop over spectra of different ages
     indVals=[] # init
-    for ns in xrange(len(spectrum.flam)):
+
+    original_flam_shape=spectrum.flam.shape
+    spectrum.flam=spectrum.flam.reshape(-1, spectrum.flam.shape[-1])
+    for ns in xrange(spectrum.flam.shape[0]):
         # loop over continuum definitions
         yAv=[] # init
         xAv=[]
@@ -1749,8 +1763,10 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         contNormSubSpec[0] *= Cstart_c
         contNormSubSpec[-1] *= Cend_c
         indVals.append(disp*np.sum(contNormSubSpec))
+
+    spectrum.flam=spectrum.flam.reshape(original_flam_shape)
         
-    return np.array(indVals)
+    return np.array(indVals).reshape((original_flam_shape[0], original_flam_shape[1]))
 
 
 def checkSpacing(spectrum, index, round_prec=10):
@@ -1793,9 +1809,15 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
     delta = checkSpacing(spectrum, index, round_prec=round_prec)
     if type(disp)==type(None): disp=delta
     # init
+
+    # loop over spectra and calc indices
+    original_flam_shape=spectrum.flam.shape
+    spectrum.flam=spectrum.flam.reshape(-1, spectrum.flam.shape[-1]).tolist()
+
     indices = np.zeros(len(spectrum.flam),dtype=float)
     index_vars = np.zeros_like(indices)
-    # loop over spectra and calc indices
+
+
     for spec in xrange(len(spectrum.flam)):
 
         SED = np.column_stack((spectrum.lam, spectrum.flam[spec]))
@@ -1986,9 +2008,13 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
         indices[spec] = ind
         index_vars[spec] = ind_var_tot
 
+    indices=indices.reshape((original_flam_shape[0], original_flam_shape[1]))
+
     rlist = indices
     if var_SED is not None:
         rlist = [indices, np.sqrt(index_vars)]
+
+    spectrum.flam=np.array(spectrum.flam).reshape(original_flam_shape)
 
     return rlist 
 
