@@ -13,7 +13,6 @@ import pdb
 from os.path import expanduser
 from nearest import nearest as nn
 
-
 # globals
 c = 299792458.0 # m/s
 pc= 3.08568025E16
@@ -124,7 +123,7 @@ class spectrum:
             loc = flam.shape
             
             # check for bigger arrays
-            if len(loc)> 2: raise "lamspec not understood"
+            #if len(loc)> 2: raise "lamspec not understood"
 
             # get sizes
             nlam = loc[1]
@@ -175,8 +174,9 @@ class spectrum:
 
         # add age info
         if age is not None:
-            if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
+            #if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
             self.age = singleOrList2Array(age)
+            checkDims(self.age, "Age", self.flam.shape[:-1])
             self.logage = np.log10(self.age)
         else:
             self.age = None
@@ -185,6 +185,7 @@ class spectrum:
         if mass is not None:
             #if(len(mass)!=nspec): raise "NMASS != NSPEC?!"
             self.mass = singleOrList2Array(mass)
+            checkDims(self.mass, "Mass", self.flam.shape[:-1])
             self.logmass = np.log10(self.mass)
         else:
             self.mass = None
@@ -192,31 +193,37 @@ class spectrum:
         if alpha is not None:
             #if(len(alpha)!=nspec): raise "NALPHA != NSPEC?!"
             self.alpha = singleOrList2Array(alpha)
+            checkDims(self.alpha, "Alpha", self.flam.shape[:-1])
         else:
             self.alpha = None
 
         # add metallicitiy
         if Z is not None:
-            if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
+            #if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
             self.Z = singleOrList2Array(Z)
+            checkDims(self.Z, "Z", self.flam.shape[:-1])
         else:
             self.Z = None
 
         # add IMF
         if IMF is not None:
             self.IMF = singleOrList2Array(IMF)
+            checkDims(self.IMF, "IMF", self.flam.shape[:-1])
         else:
             self.IMF = None
 
         # name of the model, e.g. BC03
         if model is not None:
-            self.model = singleOrList2Array(model)
+            assert np.isscalar(model), "Model not scalar"
+            self.model = model #singleOrList2Array(model)
+            #checkDims(model, "Model", self.flam.shape[:-1])
         else:
             self.model = None
 
         # add the resolution in AA
         if resolution is not None:
-            self.resolution = singleOrList2Array(resolution)
+            assert len(resolution)==2, "Resolution not understood"
+            self.resolution = resolution #singleOrList2Array(resolution)
         else:
             self.resolution = None
 
@@ -238,6 +245,8 @@ class spectrum:
             keys = userdict.keys()
             for key in keys:
                 setattr(self, key, singleOrList2Array(userdict[key]))
+                
+                
         else:
             self.__userdict__ = None
 
@@ -952,6 +961,8 @@ class spectrum:
 
 ###################################### END OF SPECTRUM CLASS #####################################
 
+def checkDims(var, varname, parentShape):
+    assert (np.isscalar(var)) or (np.all(np.equal(np.array(var).shape,parentShape))), varname+" dimensions not understood."
 
 def singleOrList2Array(invar):
     """
