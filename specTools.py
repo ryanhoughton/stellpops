@@ -131,7 +131,7 @@ class spectrum:
             nspec= loc[0]
 
             self.lam  = lam
-            self.flam = singleOrList2Array(flam)#.tolist()
+            self.flam = np.atleast_2d(singleOrList2Array(flam))#.tolist()
 
             if errlamspec is not None:
                 eflam = np.atleast_2d(errlamspec)
@@ -159,7 +159,7 @@ class spectrum:
             nspec = loc[0]
             
             self.mu   = mu
-            self.fmu = singleOrList2Array(fmu)#.tolist()
+            self.fmu = np.atleast_2d(singleOrList2Array(fmu))#.tolist()
 
             if errmuspec is not None:
                 # if 1D array, blk up to 2D
@@ -283,7 +283,7 @@ class spectrum:
                     except:
                         pass
                     
-            newspec = spectrum(lam=dself['lam'], lamspec=dself['flam'], errlamspec=dself['eflam'], \
+            newspec = spectrum(lam=dself['lam'], lamspec=np.atleast_2d(dself['flam']), errlamspec=dself['eflam'], \
                                age=dself['age'], mass=dself['mass'], alpha=dself['alpha'], Z=dself['Z'], \
                                IMF=dself['IMF'], filter=dself['__filter__'], model=dself['model'], \
                                resolution=dself['resolution'], wavesyst=dself['wavesyst'], \
@@ -410,7 +410,7 @@ class spectrum:
             #            self.efmu.append( eflam )
             #        #else:
             #        #    self.efmu.append(None)
-            self.fmu=singleOrList2Array(self.fmu)
+            self.fmu=np.atleast_2d(singleOrList2Array(self.fmu))
         else:
             for flam in np.atleast_2d(self.flam):
                 self.fmu.append( flam * self.lam * (self.lam) / c * 1e4 )
@@ -420,13 +420,9 @@ class spectrum:
                 for eflam in np.atleast_2d(self.eflam):
                     if eflam is not None:
                         self.efmu.append( eflam * self.lam * (self.lam) / c * 1e4 )
-                self.efmu = singleOrList2Array(self.efmu)
+                self.efmu = np.atleast_2d(singleOrList2Array(self.efmu))
                     #else:
                     #    self.efmu.append(None)
-
-            pdb.set_trace()
-        
-            
 
 
     def calclamspec(self, filter=False):
@@ -775,7 +771,7 @@ class spectrum:
             # calc required kernel dispersion
             if correct4InstRes:
                 # correct for instrumental dispersion
-                meanLam = np.mean(np.array(self.lam[0],self.lam[-1])) # mean wavelength
+                meanLam = np.mean(np.array([self.lam[0],self.lam[-1]])) # mean wavelength
                 resAA = self.calcResolution(meanLam) # FWHM res at this wavelength
                 sigmaSpec = resAA/meanLam * c / 1e3 / np.sqrt(8.*np.log(2.)) # equivalent vel disp
                 # sanity check
@@ -833,7 +829,7 @@ class spectrum:
         
         # overwite old flams
         self.lam  = self.lam[loc]
-        self.flam = newflams
+        self.flam = singleOrList2Array(newflams)
         if self.eflam is not None: #hasattr(self, 'eflam'):
             self.eflam = neweflams
 
@@ -1671,14 +1667,24 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
     delta = checkSpacing(spectrum, index, round_prec=round_prec)
     if type(disp)==type(None): disp=delta
 
+    if spectrum.eflam is not None:
+        calcVar=True
+    else:
+        calcVar=False
+    
+
     # if no variance array
-    #if not hasattr(spectrum,'eflam'):
+    # if not hasattr(spectrum,'eflam'):
     # loop over spectra of different ages
     indVals=[] # init
+    if calcVar:
+        EindVals = []
     for ns in xrange(len(spectrum.flam)):
         # loop over continuum definitions
         yAv=[] # init
         xAv=[]
+        if calcVar:
+            VyAv = [] # init variance array
         for j in xrange(index['ncont']):
             # Find first and last data indices within bandpass
             a = np.where(spectrum.lam > index['cont_start'][j])[0][0]
@@ -1704,9 +1710,16 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
                 # use (weighted) mean
                 yAv.append(np.sum(spectrum.flam[ns][a:b+1]*wCont)/wCsum)
                 xAv.append(np.sum(spectrum.lam[a:b+1]*wCont)/wCsum)
+
+                if calcVar:
+                    VyAv.append(np.sum( (spectrum.eflam[ns][a:b+1]*wCont/wCsum)**2.0 ))
+                    
             elif contMethod=='median':
                 yAv.append(np.median(spectrum.flam[ns][a:b+1]))
                 xAv.append(np.median(spectrum.lam[a:b+1]))
+
+                if calcVar:
+                    VyAv.append( 1.253**2.0 * np.sum( (spectrum.eflam[ns][a:b+1]*wCont/wCsum)**2.0 ) )
             else:
                 raise ValueError("contMethod not understood")
 
@@ -1715,7 +1728,15 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
 
         # calc linear continuum: y=mx+c using simple simultaneous equn solution
         gradient = (yAv[0]-yAv[1]) / (xAv[0]-xAv[1])
-        slope    = yAv[0]-gradient*xAv[0]
+        intercept    = yAv[0]-gradient*xAv[0]
+
+        if calcVar:
+            # calc errors on grad and intercept - see notes 2/11/16
+            Vgradient = gradient**2. * ( (VyAv/yAv**2.) + (VxAv/xAv**2.) )
+            VCs = VyAv #+ gradient**2. * VxAv
+            VCinvsum = np.sum(1.0 / VCs)
+            alphas = VCs/VCinvsum
+            Vintercept = np.sum(alphas**2. * VCs)
 
         #######################################
         # Calculate the index
@@ -1738,14 +1759,28 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         Cstart_c = (spectrum.lam[a] - index['ind_start'] + 0.5*disp)/disp  
         Cend_c = (index['ind_stop'] - spectrum.lam[b] + 0.5*disp)/disp 
 
-        contNormSubSpec = 1.0 - spectrum.flam[ns][a:b+1] / (gradient*spectrum.lam[a:b+1] + slope)
-
-
+        Fi = gradient*spectrum.lam[a:b+1] + intercept
+        contNormSubSpec = 1.0 - spectrum.flam[ns][a:b+1] / Fi
         contNormSubSpec[0] *= Cstart_c
         contNormSubSpec[-1] *= Cend_c
-        indVals.append(disp*np.sum(contNormSubSpec))
+        index = disp*np.sum(contNormSubSpec)
+        indVals.append(index)
+
+        if calcVar:
+            # calc error on index, folding in uncertainty on continuum (ignoring covariances)
+            VFi = spectrum.lam[a:b+1] * Vgradient + Vintercept
+            VIi = index**2. * ( (spectrum.eflam[ns][a:b+1]/spectrum.flam[ns][a:b+1])**2.0 + (VFi/Fi**2.) )
+            Eindex = np.sqrt(np.sum(VIi))
+            EindVals.append(Eindex)
+
+        pdb.set_trace()
+
+    # determine what to return
+    rlist = indVals
+    if calcVar:
+        rlist.append(EindVals)
         
-    return np.array(indVals)
+    return rlist
 
 
 def checkSpacing(spectrum, index, round_prec=10):

@@ -322,7 +322,7 @@ class indlib():
                                    red_start=self.table.red_start[ni], red_stop=self.table.red_stop[ni], \
                                    wavesyst=wavesyst, verbose=verbose) # resol=self.table.resol[ni], 
 
-    def add_simple_index_via_dict(self, index_dict, verbose=False):
+    def add_simple_index_via_dict(self, index_dict, wavesyst=None, verbose=False):
         """
         Add a single index via (unspecified) dict class
 
@@ -336,14 +336,15 @@ class indlib():
             assert index_dict.get(cb) is not None, "Dictionary has None for attribute "+cb
             
         setattr(self, index_dict.get('name'), index_dict)
+        self[index_dict.get('name')]['wavesyst']=wavesyst
         self.names.append(index_dict.get('name'))
         
-    def add_simple_index_via_dicts(self, dicts, verbose=False):
+    def add_simple_index_via_dicts(self, dicts, wavesyst=None, verbose=False):
         """
         By providing a list of dicts, add indicies: wrapper for add_simple_index_via_dict
         """
         for d in dicts:
-            self.add_simple_index_via_dict(d, verbose=verbose)
+            self.add_simple_index_via_dict(d, wavesyst=wavesyst, verbose=verbose)
 
     def keys(self):
         """
