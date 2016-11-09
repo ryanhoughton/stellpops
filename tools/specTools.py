@@ -176,6 +176,7 @@ class spectrum:
         if age is not None:
             #if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
             self.age = singleOrList2Array(age)
+
             checkDims(self.age, "Age", self.flam.shape[:-1])
             self.logage = np.log10(self.age)
         else:
@@ -830,25 +831,40 @@ class spectrum:
         Clip the spectral range to be between minlam and maxlam
         """
 
-        newflams = []
+        
         # set range
         loc = np.where((self.lam>minlam) & (self.lam<maxlam))[0]
+
+        #Get shapes for flattening
+        original_flam_shape=self.flam.shape
+        flattened_shape=self.flam.reshape(-1, self.flam.shape[-1]).shape
+
+
         # clip specs
-        for flam in self.flam:
-            newflams.append(flam[loc])
+        newflams=np.empty( (flattened_shape[:-1] + (len(loc),) ))
+
+        for i, flam in enumerate(self.flam.reshape(-1, self.flam.shape[-1])):
+            newflams[i, :]=flam[loc]
         if self.eflam is not None: #hasattr(self, 'eflam'):
+            raise NameError("Code not written!")
             neweflams=[]
             for eflam in self.eflam:
                 neweflams.append(eflam[loc])
+
+
+        newshape=(original_flam_shape[:-1]+(-1,))
+        newflams=newflams.reshape(newshape)
         
         # overwite old flams
         self.lam  = self.lam[loc]
+
+        assert np.all(np.equal(newflams.shape[:-1], self.flam.shape[:-1])), "Something's gone wrong with the shape of newflams"
         self.flam = singleOrList2Array(newflams)
         if self.eflam is not None: #hasattr(self, 'eflam'):
             self.eflam = neweflams
 
-        # update muspec
-        self.calcmuspec()
+        ## update muspec
+        #self.calcmuspec()
         
     def calcIndex(self, index, disp=None, round_prec=10, method=0, verbose=False):
         """
@@ -1579,7 +1595,7 @@ def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=5
     return cutSpec
 
 
-def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot=False, verbose=True):
+def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot=False, verbose=True, n_sig=5.0):
     """
     RH 18/10/2016
 
@@ -1626,8 +1642,8 @@ def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot
 
     # define cut spectrum edges
     #conv_sigma = kernelSigma/meanWave*c/1e3 so kernalSigma=conv_sigma*meanWave*1e3/c
-    cutlow = (index['blue_start'] - 5.0*conv_sigma*meanWave*1e3/c)
-    cuthigh= (index['red_stop']   + 5.0*conv_sigma*meanWave*1e3/c)
+    cutlow = (index['blue_start'] - n_sig*conv_sigma*meanWave*1e3/c)
+    cuthigh= (index['red_stop']   + n_sig*conv_sigma*meanWave*1e3/c)
 
     # cut spec
     cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
@@ -1720,6 +1736,7 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         xAv=[]
         if calcVar:
             VyAv = [] # init variance array
+        assert index['ncont']==2, "Can't calculate simple index when More than 2 continuum regions defined."
         for j in xrange(index['ncont']):
             # Find first and last data indices within bandpass
             a = np.where(spectrum.lam > index['cont_start'][j])[0][0]
@@ -1729,6 +1746,8 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
                 a -= 1
             if (index['cont_stop'][j] - spectrum.lam[b]) > (spectrum.lam[b+1] - index['cont_stop'][j]):
                 b += 1
+
+
 
             # Multiplicative factors for start and end pixels
             Cstart_c = (spectrum.lam[a] - index['cont_start'][j] + 0.5*disp)/disp  
@@ -1758,7 +1777,7 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
             else:
                 raise ValueError("contMethod not understood")
 
-        assert len(yAv)==2, "Can't calculate simple index when More than 2 continuum regions defined."
+        
         # RH: fractional pixels not correctly included in continuum fit - used as whole pixels
 
         # calc linear continuum: y=mx+c using simple simultaneous equn solution

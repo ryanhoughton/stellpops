@@ -101,13 +101,10 @@ class ind(dict):
         MUST SPECIFY RED AND BLUE CONTINUUA SEPARATELY
         
         """
-        import pdb; pdb.set_trace()
-
         #make everything at least a list
-        self['blue_start']=np.atleast_1d(self['blue_start']).tolist()
-        self['blue_stop']=np.atleast_1d(self['blue_stop']).tolist()
-        self['red_start']=np.atleast_1d(self['red_start']).tolist()
-        self['red_stop']=np.atleast_1d(self['red_stop']).tolist()
+        self['cont_start']=np.atleast_1d(self['cont_start']).tolist()
+        self['cont_stop']=np.atleast_1d(self['cont_stop']).tolist()
+
 
         # add new features
         if (type(ind_start)!=type(None)) & (type(ind_stop)!=type(None)):
@@ -122,20 +119,26 @@ class ind(dict):
         if (type(blue_start)!=type(None)) & (type(blue_stop)!=type(None)):
             #assert len(blue_start)==len(blue_stop), 'Non-equal number of start/stop positions for new blue continuum'
 
-            self['blue_start'].extend(blue_start)
-            self['blue_stop'].extend(blue_stop)
-            self['cont_start'].extend(blue_start)
-            self['cont_stop'].extend(blue_stop)
+            if blue_start<self['blue_start']:
+                self['blue_start']=blue_start
+            if blue_stop<self['blue_stop']:
+                self['blue_stop']=blue_stop
+
+            self['cont_start'].extend([blue_start])
+            self['cont_stop'].extend([blue_stop])
 
             self['ncont']+=1
         # add new red cont
         if (type(red_start)!=type(None)) & (type(red_stop)!=type(None)):
             #assert len(red_start)==len(red_stop), 'Non-equal number of start/stop positions for new red continuum'
 
-            self['red_start'].extend(red_start)
-            self['red_stop'].extend(red_stop)
-            self['cont_start'].append(red_start)
-            self['cont_stop'].append(red_stop)
+            if red_start>self['red_start']:
+                self['red_start']=red_start
+            if red_stop>self['red_stop']:
+                self['red_stop']=red_stop
+
+            self['cont_start'].extend([red_start])
+            self['cont_stop'].extend([red_stop])
 
             self['ncont']+=1
 

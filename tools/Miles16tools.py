@@ -110,7 +110,11 @@ def load_eMILES_spectra(basedir='/Data/stellarpops/Miles/base_set', verbose=True
 
                 flams[i, j, :]=data
 
-        sp=s.spectrum(lamspec=flams, lam=lamdas, age=ages, Z=Zs, IMF=IMF, model='eMILES', wavesyst="air")
+
+        ages=np.repeat(ages, len(Zs)).reshape(len(files), len(Zs)).T
+        Z_values=np.repeat(Zs, len(files)).reshape(len(Zs), len(files))
+
+        sp=s.spectrum(lamspec=flams, lam=lamdas, age=ages, Z=Z_values, IMF=IMF, model='eMILES', wavesyst="air")
         specs[IMF]=sp
         if verbose:
             print "Loaded {} SSPs with {} IMF".format(len(files)*len(Zs), IMF)
@@ -127,8 +131,7 @@ def cut_and_measure_index(spec, index, out_sigma, index_type='Cenarro'):
     """
 
     #If the index red stop is less than 8950, the model resolution is FWHM of 2.5A
-    if index['name']=='CaII86':
-        import pdb; pdb.set_trace()
+
     if np.atleast_1d(np.array(index['red_stop']))[-1]<8950.0:
 
         if index['nfeat']>0.0:
@@ -194,96 +197,200 @@ def get_np_indices_for_params(IMFs=['bi0.30', 'bi0.50', 'bi0.80', 'bi1.00', 'bi1
     return param_dict
 
 
+def alpha_corrected_index(specs, index, out_sigma, cvd_dir='/Volumes/SPV_SWIFT/Science/CvD/', alpha=0.3, verbose=True):
+
+    import CvD12tools as cvd
+
+    cvd13 = cvd.loadCvD12spec('{}/t13.5_solar.ssp'.format(cvd_dir))
+    cvdafe = cvd.loadCvD12spec('/Volumes/SPV_SWIFT/Science/CvD/t13.5_afe+0.2.ssp')
+
+    CvDlam=cvd13.lam
+    alphafac = (cvdafe.flam[3]/cvd13.flam[3]-1)*((10**(alpha)-1.0)/(10**(0.2)-1.0))
+
+    alphafac=s.vac2air(alphafac)
+
+    if verbose:
+        print "Created alphafac: shape is {}".format(alphafac.shape)
+
+    #CvD spectra have a spectral resolution of ~2000
+    #This is a sigma of ~63km/s
+
+    #Miles models have a FWHM of 2.5A below 8950A, 60km/s above it.
+    #60km/s is a resolving power of 2121: R=c/sigma*sqrt(8ln2)=2121
+    #At NaI, FWHM of 2.5A is a sigma of 38.9km/s, or R=3276
+
+    
+    #Need to discuss- but will not convolve either model above 8950A for the moment
+    #Below, I'll convolve MILES up to a sigma of 63 km/s
+    #should test whether this makes a difference!
+
+    if index['red_stop']<8950.0:
+
+        if verbose:
+            print "Index is below 8950A. Need to convolve MILES up to CvD resolution"
+
+        #Convolve the Miles models up to the CvD resolution
+        CvD_sigma=63.0
+        if index['nfeat']>0.0:
+            model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['ind_start'][0]*1000.0)            
+        else:
+            model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['cont_stop'][0]*1000.0)
+
+        assert CvD_sigma > model_sigma, 'Cant convolve to a resolution below the model resolution'
+        conv_sigma=np.sqrt(CvD_sigma**2-model_sigma**2)
+
+        MILES_at_CvD_res=s.cutAndGaussVelConvolve(specs, index, conv_sigma, n_sig=30.0)
+
+        if verbose:
+
+            print "Made MILES spec at CvD resolution. Shape is {}".format(MILES_at_CvD_res.flam.shape)
+
+
+    else:
+        MILES_at_CvD_res=specs.copy()
+
+
+    #Cut Miles specs to finish at the same lamda as the CvD specs
+    MILES_at_CvD_res.clipSpectralRange(MILES_at_CvD_res.lam[0], CvDlam[-1])
+
+    if verbose:
+        print "Clipped the MILES spectra to end at 2.4um. Shape is {}".format(MILES_at_CvD_res.flam.shape)
+
+    #Clip CvDspecs to start and stop at the same lamda as the (clipped or not clipped) MILES ones
+    lamda_mask=np.where((CvDlam>MILES_at_CvD_res.lam[0]) & (CvDlam<MILES_at_CvD_res.lam[-1]))[0]
+    alphafac=alphafac[lamda_mask]
+
+
+    alphafac_interp=si.interp1d(CvDlam[lamda_mask], alphafac, fill_value='extrapolate')
+    correction=alphafac_interp(MILES_at_CvD_res.lam)   
+
+    newspec=s.spectrum(lam=MILES_at_CvD_res.lam, lamspec=np.exp(np.log(MILES_at_CvD_res.flam)+correction), wavesyst='air')
+    # if index['name']=='TiO89' and specs.IMF=='bi1.30':
+    #     import matplotlib.pyplot as plt
+    #     plt.clf()
+    #     plt.figure()
+    #     import pdb; pdb.set_trace()
+    """
+    for i, flam in enumerate(MILES_at_CvD_res.flam.reshape(-1, MILES_at_CvD_res.flam.shape[-1])):
+
+        assert len(flam)==len(correction), "Lengths of arrays aren't equal!"
+        # import pdb; pdb.set_trace()
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.plot(MILES_at_CvD_res.lam, flam, c='k')
+        flam=np.exp(np.log(flam)+correction)
+        # plt.plot(MILES_at_CvD_res.lam, flam, c='r')
+        # plt.show()
+        # import pdb; pdb.set_trace()
+
+
+        if verbose:
+            print "Applied Correction to spec {} of {}".format(i, MILES_at_CvD_res.flam.reshape(-1, MILES_at_CvD_res.flam.shape[-1]).shape[0])
+    """
+
+
+
+    ind_vals=cut_and_measure_index(newspec, index, out_sigma, index_type='Cenarro')
+
+    return ind_vals
+
+
+
+
+
+
+
+
 
     
 
 
-# def convolve_eMILES_spectra(spec, sigma, verbose=False):
+def convolve_eMILES_spectra(spec, sigma, verbose=False):
 
-#     """Convolve an e-MILES spectrum up to a given sigma. This is made slightly tricky by the fact that the e-MILES spectra are at a fixed FWHM of lambda=2.5A
-#     below 8950A, but at sigma=60 km/s above that. We split the spectra at 8950A, convolve both appropriately, then join back together.
+    """Convolve an e-MILES spectrum up to a given sigma. This is made slightly tricky by the fact that the e-MILES spectra are at a fixed FWHM of lambda=2.5A
+    below 8950A, but at sigma=60 km/s above that. We split the spectra at 8950A, convolve both appropriately, then join back together.
 
-#     Inputs:
-#     -- spec: an e-MILES spectrum object
-#     -- sigma: a velocity dispersion to convolve to
-#     -- verbose: a boolean
+    Inputs:
+    -- spec: an e-MILES spectrum object
+    -- sigma: a velocity dispersion to convolve to
+    -- verbose: a boolean
 
-#     Outputs:
-#     -- an e-Miles spectrum object
+    Outputs:
+    -- an e-Miles spectrum object
 
-#     Info:
-#     -- Wavelength should be in Angstroms
-
-
-#     ###### TO DO ######
-
-#     Sort out what happens at 8950 angstroms- at the moment, the two convolutions do funny things around the join
-#     """
-
-#     #Do this to keep the userdict of the spectrum, instead of making a new spectrum and losing that dictionary
-#     import copy
-#     final_spec=copy.deepcopy(spec)
-
-#     lamdas=np.array(spec.lam)
-#     data=np.array(spec.flam)
+    Info:
+    -- Wavelength should be in Angstroms
 
 
-#     assert (lamdas[0]<8950.0) & (lamdas[-1]>8950.0), "Are the wavelengths in Angstroms? Looks like the wavelength array doesn't contain 8950 A"
+    ###### TO DO ######
 
-#     lamda_mask=lamdas<8950.0
+    Sort out what happens at 8950 angstroms- at the moment, the two convolutions do funny things around the join
+    """
 
-    
+    #Do this to keep the userdict of the spectrum, instead of making a new spectrum and losing that dictionary
+    import copy
+    final_spec=copy.deepcopy(spec)
 
-#     final_flams=[]
+    lamdas=np.array(spec.lam)
+    data=np.array(spec.flam)
+
+
+    assert (lamdas[0]<8950.0) & (lamdas[-1]>8950.0), "Are the wavelengths in Angstroms? Looks like the wavelength array doesn't contain 8950 A"
+
+    lamda_mask=lamdas<8950.0
 
     
 
+    final_flams=[]
 
-#     low_lam_spec=s.spectrum(lamdas[lamda_mask], data[lamda_mask])
-#     high_lam_spec=s.spectrum(lamdas[~lamda_mask], data[~lamda_mask])
-
-#     #e-MILES spectral res above 8950A is 60km/s
-#     high_lam_specsig=60.0
-#     assert sigma>high_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
-#     convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
-
-#     high_lam_spec.gaussVelConvolve(0.0, convsig, verbose=verbose)
-#     # loglams=high_lam_spec.loglam      
-#     # interp=si.interp1d(loglams, high_lam_spec.conflam[0], fill_value='extrapolate')
-#     # linlams=high_lam_spec.lam
-#     # high_lam_flam=interp(linlams)
-
-
-#     import ipdb; ipdb.set_trace()
-
-#     #high_lam_spec.interp_log_to_lin(verbose=verbose)
-
-#     #e-MILES spectral res below 8950A is 2.5A
     
-#     #For now, we only care about the spectra around NaI 8190
-#     #At this wavelength, with a FWHM of 2.5A, delta v is 39km/s
-
-#     low_lam_specsig=39.0
-#     assert sigma>low_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
-#     convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
-
-#     low_lam_spec.gaussVelConvolve(0.0, convsig, verbose=verbose)
-#     # loglams=low_lam_spec.loglam  
-#     # interp=si.interp1d(loglams, low_lam_spec.conflam[0], fill_value='extrapolate')
-#     # linlams=low_lam_spec.lam
-#     # low_lam_flam=interp(linlams)
-#     #low_lam_spec.interp_log_to_lin(verbose=verbose)
 
 
-#     final_flams.append(np.concatenate([low_lam_flam, high_lam_flam]))
+    low_lam_spec=s.spectrum(lamdas[lamda_mask], data[lamda_mask])
+    high_lam_spec=s.spectrum(lamdas[~lamda_mask], data[~lamda_mask])
+
+    #e-MILES spectral res above 8950A is 60km/s
+    high_lam_specsig=60.0
+    assert sigma>high_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
+    convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
+
+    high_lam_spec.gaussVelConvolve(0.0, convsig, verbose=verbose)
+    # loglams=high_lam_spec.loglam      
+    # interp=si.interp1d(loglams, high_lam_spec.conflam[0], fill_value='extrapolate')
+    # linlams=high_lam_spec.lam
+    # high_lam_flam=interp(linlams)
 
 
-#     final_spec.flam=np.array(final_flams)
-#     setattr(final_spec, 'sigma', sigma)
+    #import ipdb; ipdb.set_trace()
+
+    #high_lam_spec.interp_log_to_lin(verbose=verbose)
+
+    #e-MILES spectral res below 8950A is 2.5A
+    
+    #For now, we only care about the spectra around NaI 8190
+    #At this wavelength, with a FWHM of 2.5A, delta v is 39km/s
+
+    low_lam_specsig=39.0
+    assert sigma>low_lam_specsig, "Sigma must be greater than the spectral resolution of the models"
+    convsig=np.sqrt(sigma**2 - high_lam_specsig**2)
+
+    low_lam_spec.gaussVelConvolve(0.0, convsig, verbose=verbose)
+    # loglams=low_lam_spec.loglam  
+    # interp=si.interp1d(loglams, low_lam_spec.conflam[0], fill_value='extrapolate')
+    # linlams=low_lam_spec.lam
+    # low_lam_flam=interp(linlams)
+    #low_lam_spec.interp_log_to_lin(verbose=verbose)
+
+
+    final_flams.append(np.concatenate([low_lam_flam, high_lam_flam]))
+
+
+    final_spec.flam=np.array(final_flams)
+    setattr(final_spec, 'sigma', sigma)
 
 
 
-#     return final_spec
+    return final_spec
 
 
 
