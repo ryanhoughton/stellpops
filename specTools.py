@@ -106,6 +106,10 @@ class spectrum:
            
         """
 
+        # set which attributes may be arrays, excluding flam and fmu (which obviously can be)
+        self.arrayAttrs=['age', 'Z', 'alpha', 'mass', 'IMF']
+        self.unrastered=False # Spectra always loaded in an unrasterised, multi-D manner
+        
         # check if initalised "correctly"
         if (lamspec is None) & (muspec is None):
             raise "Spectrum must be defined with either lamspec(AA) or muspec (Hz)"
@@ -121,17 +125,18 @@ class spectrum:
             flam = np.atleast_2d(lamspec)
             # get array size
             loc = flam.shape
+
+            # assign dims of non-spectral component
+            self.dims = list(loc[:-1])
+            self.nspec = self.getSize()
+            # assign dims of spectral component
+            self.nlam = loc[-1]
             
-            # check for bigger arrays
-            #if len(loc)> 2: raise "lamspec not understood"
+            # assign data to class
+            self.lam  = np.array(lam)
+            self.flam = np.atleast_2d(singleOrList2Array(flam))
 
-            # get sizes
-            nlam = loc[1]
-            nspec= loc[0]
-
-            self.lam  = lam
-            self.flam = np.atleast_2d(singleOrList2Array(flam))#.tolist()
-
+            # deal with error spectra
             if errlamspec is not None:
                 eflam = np.atleast_2d(errlamspec)
                 eloc = eflam.shape
@@ -140,94 +145,94 @@ class spectrum:
                 assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
             else:
                 self.eflam = None
-            #else:
-            #    self.eflam = [None for f in self.flam] # make a list of 'None's
-
+            # calc the corresponding muspec
             self.calcmuspec(filter=filter)
 
         if muspec is not None:
             if mu is None: raise "If you give muspec, you must also give mu"
 
-            # if 1D array, blk up to 2D
+            # make sure 2D
             fmu = np.atleast_2d(muspec)
+            # get array size
             loc = fmu.shape
-            if len(loc)!= 2: raise "muspec not understood"
-
-            # get sizes
-            nmu   = loc[1]
-            nspec = loc[0]
             
-            self.mu   = mu
-            self.fmu = np.atleast_2d(singleOrList2Array(fmu))#.tolist()
+            # assign dims of non-spectral component
+            self.dims = list(loc[:-1])
+            self.nspec = self.getSize()
+            # assign dims of spectral component
+            self.nmu = loc[-1]
+            
+            # assign data to class
+            self.mu  = np.array(mu)
+            self.fmu = np.atleast_2d(singleOrList2Array(fmu))
 
+            # deal with error spectra
             if errmuspec is not None:
-                # if 1D array, blk up to 2D
-                efmu = np.atleast_2d(efmu)
+                efmu = np.atleast_2d(errmuspec)
                 eloc = efmu.shape
                 self.efmu = efmu
                 # sanity check
-                assert np.all(loc==eloc), "muspec and errmuspec seem to be different shapes."
+                assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
             else:
                 self.efmu=None
-
+            # calc the corresponding lamspec
             self.calclamspec(filter=filter)
 
         # add age info
         if age is not None:
-            #if(len(age)!=nspec): raise ValueError("NAGE != NSPEC?!")
+            # scalar or array
             self.age = singleOrList2Array(age)
-            checkDims(self.age, "Age", self.flam.shape[:-1])
+            # check dims
+            self.checkDims("age")
+            # add useful logage
             self.logage = np.log10(self.age)
         else:
             self.age = None
 
-        # add stellar mass info for each age
+        # add stellar mass info, in same way added age info
         if mass is not None:
-            #if(len(mass)!=nspec): raise "NMASS != NSPEC?!"
             self.mass = singleOrList2Array(mass)
-            checkDims(self.mass, "Mass", self.flam.shape[:-1])
+            self.checkDims("mass")
             self.logmass = np.log10(self.mass)
         else:
             self.mass = None
 
+        # add alpha info in similar way as added age
         if alpha is not None:
-            #if(len(alpha)!=nspec): raise "NALPHA != NSPEC?!"
             self.alpha = singleOrList2Array(alpha)
-            checkDims(self.alpha, "Alpha", self.flam.shape[:-1])
+            self.checkDims("alpha")
         else:
             self.alpha = None
 
-        # add metallicitiy
+        # add metallicitiy in same way to alpha
         if Z is not None:
-            #if len(np.array([Z]).shape)!=1: raise ValueError("Metallicity Z must be a scalar")
             self.Z = singleOrList2Array(Z)
-            checkDims(self.Z, "Z", self.flam.shape[:-1])
+            checkDims("Z")
         else:
             self.Z = None
 
-        # add IMF
+        # add IMF in same way 
         if IMF is not None:
             self.IMF = singleOrList2Array(IMF)
-            checkDims(self.IMF, "IMF", self.flam.shape[:-1])
+            checkDims("IMF")
         else:
             self.IMF = None
 
-        # name of the model, e.g. BC03
+        # name of the model, e.g. BC03: allow only scalar values here
         if model is not None:
             assert np.isscalar(model), "Model not scalar"
-            self.model = model #singleOrList2Array(model)
-            #checkDims(model, "Model", self.flam.shape[:-1])
+            self.model = model 
         else:
             self.model = None
 
-        # add the resolution in AA
+        # add the resolution in AA, allow only 2-elem-list here
         if resolution is not None:
             assert len(resolution)==2, "Resolution not understood"
-            self.resolution = resolution #singleOrList2Array(resolution)
+            self.resolution = resolution 
         else:
             self.resolution = None
 
-        # add VAC or AIR
+        # add VAC or AIR - specific strings allowed, or give warning
         if wavesyst is not None:
             if (wavesyst=="vac" or wavesyst=="VAC" or wavesyst=="Vac"):
                 self.wavesyst="vac"
@@ -244,17 +249,26 @@ class spectrum:
             self.__userdict__ = userdict
             keys = userdict.keys()
             for key in keys:
+                # add info as scalar or array
                 setattr(self, key, singleOrList2Array(userdict[key]))
-                
-                
+                # make sure the dims agree
+                checkDims(key)
         else:
             self.__userdict__ = None
 
+        # apply the filter keyword
         if filter:
             self.__filter__=filter
         else:
             self.__filter__=False
 
+
+    def checkDims(self, attr):
+        """
+        Check the dimensions of the given attribute match the dimensions of flam and fmu
+        """
+        checkDims(getattr(self, attr), attr, self.dims)
+        
     # define a copy function
     def copy(self, loc=None):
         """
@@ -400,6 +414,110 @@ class spectrum:
         # return resolution FWHM in AA
         return resAA
 
+    def unraster(self):
+        """
+        Convert the flam and fmu arrays into simple 2D arrays with the first dim equal to wavelength
+        and the second dim indexing the spectrum number.
+
+        """
+        # unrasterise spectra - flam and fmu
+        self.originalDims = self.dims
+        self.flam = self.flam.reshape((-1,self.nlam))
+        self.fmu = self.fmu.reshape((-1,self.nmu))
+        self.dims = list(self.flam.shape[:-1])
+        assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
+               "Unrasterised flam and fmu have different shapes?"
+
+        # unrasterise known (possibly) array attributes
+        self.unrasteredAttrs=[] # init a tally of which attrs were unrastered
+        for attr in self.arrayAttrs:
+            self._unrasterAttr(attr)
+        # attempt to unrasterise userdict attributes
+        if self.__userdict__ is not None:
+            for attr in __userdict__.keys():
+                try:
+                    self._unrasterAttr(attr)
+                except:
+                    warn.warn("Failed to unrasterise user attribute "+str(attr)+".")
+        # finally, log the current format as unrasterised
+        self.unrastered=True
+
+    def _unrasterAttr(self,attr):
+        """
+        Helper function to unrasterise attributes such as age, Z, alpha, mass, etc
+        """
+
+        # only unraster if not scalar attribute
+        if (not np.isscalar(getattr(self,attr))) and (getattr(self,attr) is not None):
+            # sanity check
+            assert np.all(np.equal(np.array(getattr(self, attr).shape),self.originalDims)), \
+                   attr+" attribute does not have same dimensions as spectra"
+            setattr(self, attr, getattr(self,attr).reshape(self.dims))
+            # keep a tally of which attrs were unrastered
+            self.unrasteredAttrs.append(attr)
+
+    def reraster(self):
+        """
+        Convert the flam and fmu spectral arrays back into their original, mutli-D formats.
+        
+        """
+        # sanity check
+        assert self.unrastered, "Spectra are not unrasterised, so cannot re-rasterise"
+
+        # re-rasterise the flam and fmu
+        newLamShape = cp.copy(self.originalDims)
+        newLamShape.append(self.nlam)
+        self.flam = self.flam.reshape(tuple(newLamShape))
+        newMuShape = cp.copy(self.originalDims)
+        newMuShape.append(self.nmu)
+        self.fmu = self.fmu.reshape(tuple(newMuShape))
+        # reset dims
+        self.unrasterDims = cp.copy(self.dims)
+        self.dims = cp.copy(self.originalDims)
+        # sanity check
+        assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
+               "Re-rasterised flam and fmu have different shapes?"
+        self.unrastered=False
+
+        # re-rasterise all unrastered attrs
+        for attr in self.unrasteredAttrs:
+            self._rerasterAttr(attr)
+
+        # sanity check - no more unrastered attrs
+        assert len(self.unrasteredAttrs)==0, "Still have unrastered attributes?"
+        # delete the redundant vars
+        delattr(self, "unrasteredAttrs")
+        delattr(self, "originalDims")
+        delattr(self, "unrasterDims")
+        # set as re-rastered
+        self.unrastered=False
+
+    def _rerasterAttr(self, attr):
+        """
+        Helper function to re-rasterise the array attributes
+        """
+        # only unrasterise if not scalar attribute.
+        # Although this should never be a problem, as _rerasterise is called with args from self.unrasteredAttrs
+        if (not np.isscalar(getattr(self,attr))) and (getattr(self,attr) is not None):
+            # sanity check
+            assert np.all(np.equal(np.array(getattr(self, attr).shape),self.unrasterDims)), \
+                   attr+" attribute does not have same dimensions as spectra"
+            setattr(self, attr, getattr(self,attr).reshape(self.dims))
+            # remove this attr from the unraster list
+            self.unrasteredAttrs.remove(attr)
+            
+    def getShape(self):
+        """
+        Return the shape of the flam/fmu arrays, ignoring the spectral dim
+        """
+        return self.dims
+
+    def getSize(self):
+        """
+        Return the total number of spectra
+        """
+        return np.prod(self.dims)
+
     def calcmuspec(self, filter=False):
         """
         Calculate a muspec (GJy @ GHz) from a lamspec (erg/s/cm**2/AA @ AA)
@@ -412,13 +530,6 @@ class spectrum:
         if filter:
             for flam in np.atleast_2d(self.flam):
                 self.fmu.append( flam )
-            #if hasattr(self, 'eflam'):
-            #    self.efmu = []
-            #    for eflam in self.eflam:
-            #        if eflam is not None:
-            #            self.efmu.append( eflam )
-            #        #else:
-            #        #    self.efmu.append(None)
             self.fmu=np.atleast_2d(singleOrList2Array(self.fmu))
         else:
             for flam in np.atleast_2d(self.flam):
@@ -432,6 +543,7 @@ class spectrum:
                 self.efmu = np.atleast_2d(singleOrList2Array(self.efmu))
                     #else:
                     #    self.efmu.append(None)
+        self.nmu=self.nlam
 
 
     def calclamspec(self, filter=False):
@@ -448,13 +560,6 @@ class spectrum:
             for fmu in self.fmu:
                 self.flam.append( fmu )
             self.flam = singleOrList2Array(self.flam)
-            #if hasattr(self, 'efmu'):
-            #    self.eflam = []
-            #    for efmu in self.efmu:
-            #        if efmu is not None:
-            #            self.eflam.append( efmu )
-            #        else:
-            #            self.eflam.append(None)
             
         else:
             for fmu in self.fmu:
@@ -468,6 +573,7 @@ class spectrum:
                     else:
                         self.eflam.append(None)
                 self.eflam = singleOrList2Array(self.eflam)
+            self.nlam=self.nmu
 
     def rebinLam(self, dLam=1e-4, flux=False):
         """
@@ -962,6 +1068,9 @@ class spectrum:
 ###################################### END OF SPECTRUM CLASS #####################################
 
 def checkDims(var, varname, parentShape):
+    """
+    Check if the dimensions of the attribute match the dimension of the parent
+    """
     assert (np.isscalar(var)) or (np.all(np.equal(np.array(var).shape,parentShape))), varname+" dimensions not understood."
 
 def singleOrList2Array(invar):
@@ -1674,7 +1783,10 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
 
     """
 
-    # check for unifrm spacing
+    # sanity check that this is a simpleIndex
+    assert index['simpleIndex'], "Sorry, index is not a 'Simple Index', so cannot perform simple calculation of the index."
+
+    # check for uniform spacing
     delta = checkSpacing(spectrum, index, round_prec=round_prec)
     if type(disp)==type(None): disp=delta
 
@@ -1724,7 +1836,7 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
 
                 if calcVar:
                     VyAv.append(np.sum( (spectrum.eflam[ns][a:b+1]*wCont/wCsum)**2.0 ))
-                    
+
             elif contMethod=='median':
                 yAv.append(np.median(spectrum.flam[ns][a:b+1]))
                 xAv.append(np.median(spectrum.lam[a:b+1]))
@@ -1734,17 +1846,22 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
             else:
                 raise ValueError("contMethod not understood")
 
-        assert len(yAv)==2, "Can't calculate simple index when More than 2 continuum regions defined."
-        # RH: fractional pixels not correctly included in continuum fit - used as whole pixels
+        assert len(yAv)==2, "This should never happen: Can't calculate simple index when More than 2 continuum regions defined."
 
+        # convert to arrays
+        yAv = np.array(yAv); xAv = np.array(xAv);
+        if calcVar: VyAv=np.array(VyAv)
+        
         # calc linear continuum: y=mx+c using simple simultaneous equn solution
-        gradient = (yAv[0]-yAv[1]) / (xAv[0]-xAv[1])
+        deltaY = yAv[1]-yAv[0]
+        deltaX = xAv[1]-xAv[0]
+        gradient = (deltaY) / (deltaX)
         intercept    = yAv[0]-gradient*xAv[0]
 
         if calcVar:
             # calc errors on grad and intercept - see notes 2/11/16
-            Vgradient = gradient**2. * ( (VyAv/yAv**2.) + (VxAv/xAv**2.) )
-            VCs = VyAv #+ gradient**2. * VxAv
+            Vgradient = (np.sum(VyAv)/deltaX**2.)  # no x error
+            VCs = VyAv # no x error
             VCinvsum = np.sum(1.0 / VCs)
             alphas = VCs/VCinvsum
             Vintercept = np.sum(alphas**2. * VCs)
@@ -1774,23 +1891,22 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         contNormSubSpec = 1.0 - spectrum.flam[ns][a:b+1] / Fi
         contNormSubSpec[0] *= Cstart_c
         contNormSubSpec[-1] *= Cend_c
-        index = disp*np.sum(contNormSubSpec)
-        indVals.append(index)
+        indVal = disp*np.sum(contNormSubSpec)
+        indVals.append(indVal)
 
         if calcVar:
             # calc error on index, folding in uncertainty on continuum (ignoring covariances)
             VFi = spectrum.lam[a:b+1] * Vgradient + Vintercept
-            VIi = index**2. * ( (spectrum.eflam[ns][a:b+1]/spectrum.flam[ns][a:b+1])**2.0 + (VFi/Fi**2.) )
-            Eindex = np.sqrt(np.sum(VIi))
-            EindVals.append(Eindex)
-
-        pdb.set_trace()
+            VIi = indVal**2. * ( (spectrum.eflam[ns][a:b+1]/spectrum.flam[ns][a:b+1])**2.0 + (VFi/Fi**2.) )
+            EindVal = np.sqrt(np.sum(VIi))
+            EindVals.append(EindVal)
 
     # determine what to return
     rlist = indVals
     if calcVar:
+        rlist=[rlist]
         rlist.append(EindVals)
-        
+
     return rlist
 
 
