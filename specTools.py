@@ -2001,13 +2001,20 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
             EindVal = np.sqrt(np.sum(VIi))
             EindVals.append(EindVal)
 
+    spectrum.ind = np.array(indVals)
+    spectrum.unrasteredAttrs.append("ind")
+    if calcVar:
+        spectrum.eind = np.array(EindVals)
+        spectrum.unrasteredAttrs.append("eind")
+        
     spectrum.reraster() # put into multi-D format
+    
 
     # determine what to return
-    rlist = indVals
+    rlist = np.copy(spectrum.ind)
     if calcVar:
         rlist=[rlist]
-        rlist.append(EindVals)
+        rlist.append(spectrum.eind)
 
     return rlist
 
@@ -2248,11 +2255,18 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
         indices[spec] = ind
         index_vars[spec] = ind_var_tot
 
+
+    spectrum.ind = np.array(indices)
+    spectrum.unrasteredAttrs.append("ind")
+    if var_SED is not None:
+        spectrum.eind = np.sqrt(np.array(index_vars))
+        spectrum.unrasteredAttrs.append("eind")
+        
     spectrum.reraster()
 
-    rlist = indices
+    rlist = spectrum.ind
     if var_SED is not None:
-        rlist = [indices, np.sqrt(index_vars)]
+        rlist = [spectrum.ind,spectrum.eind]
 
     return rlist 
 
