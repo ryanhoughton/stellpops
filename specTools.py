@@ -271,6 +271,7 @@ class spectrum:
         ###############################################################################################################
         # Define the spectrum part that wasn't given - this needs to be here due to the way unraster and reraster work
         ###############################################################################################################
+
         if hasattr(self, "flam"):
             # calc the corresponding muspec
             self.calcmuspec(filter=filter)
@@ -443,13 +444,12 @@ class spectrum:
         # the other type hasn't been created yet
         if hasattr(self,"flam"):
             self.flam = self.flam.reshape((-1,self.nlam))
+            if self.eflam is not None:
+                self.eflam = self.eflam.reshape((-1, self.nlam))
         if hasattr(self,"fmu"):
             self.fmu = self.fmu.reshape((-1,self.nmu))
-        # don't forget about the error arrays
-        if hasattr(self, "eflam"):
-            self.eflam = self.flam.reshape((-1, self.nlam))
-        if hasattr(self, "efmu"):
-            self.efmu = self.efmu.reshape((-1, self.nmu))
+            if self.efmu is not None:
+                self.efmu = self.efmu.reshape((-1, self.nmu))
         
         self.dims = list(self.flam.shape[:-1])
 
@@ -503,8 +503,8 @@ class spectrum:
         tnewMuShape = tuple(newMuShape)
         self.fmu = self.fmu.reshape(tnewMuShape)
         # don't forget about the error arrays
-        if hasattr(self,"eflam") :
-            assert hasattr(self,"efmu"), "Why does eflam exist, but not efmu?"
+        if self.eflam is not None:
+            assert self.efmu is not None, "Why does eflam exist, but not efmu?"
             self.eflam = self.eflam.reshape(tnewLamShape)
             self.efmu = self.efmu.reshape(tnewMuShape)
 
@@ -565,7 +565,7 @@ class spectrum:
 
         # unraster - convert flam into 2D
         self.unraster()
-        
+
         self.fmu = [] # init
         if filter:
             for flam in self.flam:
@@ -581,6 +581,8 @@ class spectrum:
                     if eflam is not None:
                         self.efmu.append( eflam * self.lam * (self.lam) / c * 1e4 )
                 self.efmu = np.atleast_2d(singleOrList2Array(self.efmu)) # at least 2D in case single errspec
+            else:
+                self.efmu = None
 
         # assign dims of spectral component
         loc = self.fmu.shape
@@ -615,6 +617,8 @@ class spectrum:
                     if efmu is not None:
                         self.eflam.append( efmu / self.lam / (self.lam) * c / 1e4 )
                 self.eflam = np.atleast_2d(singleOrList2Array(self.eflam)) # at least 2D in case single errspec
+            else:
+                self.eflam = None
 
         # assign dims of spectral component
         loc = self.flam.shape
@@ -1024,9 +1028,11 @@ class spectrum:
         
         # overwite old flams
         self.lam  = self.lam[loc]
-        self.flam = singleOrList2Array(newflams)
+        self.flam = np.atleast_2d(singleOrList2Array(newflams))
         if self.eflam is not None: 
-            self.eflam = neweflams
+            self.eflam = np.atleast_2d(singleOrList2Array(neweflams))
+
+        self.nlam = loc.shape[0]
 
         self.reraster()
 
@@ -1148,6 +1154,8 @@ class spectrum:
         if overwrite:
             self.flam = self.nflam
             if len(nefs)!=0: self.eflam = self.neflam
+
+        self.reraster() # put into multiD format
 
 
 ###################################### END OF SPECTRUM CLASS #####################################

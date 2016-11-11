@@ -173,7 +173,7 @@ def loadV15specs(V15path, imf='um:1.3', Z=0.0, A=0.0, verbose=True):
     lam = crval + np.arange(naxis) * cdelt
     # make spectrum class for all these ages
     spec = st.spectrum(lamspec=fluxes, lam=lam, age=theseages, Z=Z, model="V15", IMF=imftype+str(imfslope), wavesyst="air")
-                
+
     return spec
 """
 
