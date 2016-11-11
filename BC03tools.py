@@ -118,13 +118,13 @@ def loadBC03spec(fname, IMF=None, loadMassFile=True, resolution=[None,{'3200,950
     spectra = t.spectrum(lamspec=alldata, lam=lams, age=ages, mass=mass, Z=Z, model="BC03", \
                          IMF=IMF, resolution=resolution, wavesyst="air")
 
-    return spectra #nspec, ages, nlam, lams, alldata
+    return spectra 
 
         
 def loadBC03ssps(sedpath="~/z/data/stellar_pops/BC03/models", \
                  tracks="Padova1994", imf="salpeter", glob="*hr*{52,62,72}*ssp.ised_ASCII", \
                  Zdict = {"m22":0.0001,"m32":0.0004,"m42":0.004,"m52":0.008, \
-                 "m62":0.02, "m72":0.05}, Zind=3, verbose=False):
+                 "m62":0.02, "m72":0.05}, Zind=3, multiD=True, verbose=False):
 
     """
     Author: Ryan Houghton (18/4/11)
@@ -139,6 +139,7 @@ def loadBC03ssps(sedpath="~/z/data/stellar_pops/BC03/models", \
        Zdict   - a dictionary describing the link between 'm??' and the metalicity
        Zind    - if the sed filename is split by '_', then this is the index of the metallicity
                  code (e.g. 'm42') used in the above
+       multiD  - defaults to True, but for backward compatibility, set to False for list of spectra
        verbose - set to False for verbose output
     
     Returns:
@@ -173,12 +174,24 @@ def loadBC03ssps(sedpath="~/z/data/stellar_pops/BC03/models", \
     # using dict to get Z
     count=1
     for fname in files[1:]:
-        
         spec = loadBC03spec(fname)
         Zcode = fname.split("_")[Zind]
         if verbose: print "Read "+fname+" (Z="+str(Zdict[Zcode])+")"
         specs.append(spec)
         count+=1
+
+    # merge list of specs into multi-D format - only iterating over age and Z
+    if multiD:
+        flams = []
+        ages = []
+        Zs = []
+        for s in specs:
+            flams.append(s.flam)
+            ages.append(s.age)
+            Zs.append(np.tile(np.array(s.Z),s.nspec)) # Z is scalar, not array, so tile up
+        # make multi-D spec
+        specs = t.spectrum(lam=s.lam,lamspec=flams, age=ages, Z=Zs, model="BC03", IMF=imf, \
+                           resolution=s.resolution, wavesyst=s.wavesyst)
 
     return specs
 

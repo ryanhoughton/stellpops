@@ -12,9 +12,13 @@ def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
                 angstscale=1.0, fluxscale=1.0, skip=0, minAge=None, maxAge=None, \
                 Zdict={"10m4":0.00025, "0001":0.001, "001":0.01, \
                 "002":0.02, "004":0.04, "007":0.07}, \
+                ZHdict={"10m4":-2.25, "0001":-1.35, "001":-0.33, "002":0.0, \
+                        "004":0.35, "007":0.67}, \
                 resolution=[None,{'vis':(5,10), 'nir':(20,100)}], ):
     """
     Author: Ryan Houghton (14/4/11)
+
+    Updated with ZHdict to load masses for M11 models (11/11/2016)
 
     Purpose: To load in a stellar pop spectrum from M05, keeping
        - Age (Gyr)
@@ -28,7 +32,8 @@ def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
     """
 
     # get metallicity
-    Z = Zdict[fname.split(".")[1].split("z")[-1]]
+    Ztag = fname.split(".")[1].split("z")[-1]
+    Z = Zdict[Ztag]
     
     # read in the raw data
     alldata = np.real(np.loadtxt(fname, usecols=[agecol, zcol, lamcol, fluxcol], \
@@ -68,7 +73,7 @@ def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
     # load the stellar masses
     if massfile!=None:
         massdata = np.real(np.loadtxt(massfile, unpack=True, dtype="D"))
-        zloc = np.where(massdata[0] == alldata[1][0])[0]
+        zloc = np.where(massdata[0] == ZHdict[Ztag])[0] #alldata[1][0])[0]
         mass = massdata[2,zloc]
     else:
         mass=None
@@ -83,6 +88,7 @@ def loadM05spec(fname, massfile=None, agecol=0, zcol=1, lamcol=2, fluxcol=3, \
     else:
         aloc = np.arange(len(ages))
     ages = ages[aloc]
+    mass = mass[aloc]
     specs = specs[aloc,:]
     
     spectra = t.spectrum(lam=lam, lamspec=specs, age=ages, Z=Z, mass=mass, model="M05", \
@@ -95,7 +101,7 @@ def loadM05ssps(sedpath="~/z/data/stellar_pops/M05", \
                 imf="salpeter", glob="00[1,2,4]", morph="rhb", \
                 IMFdict={"salpeter":"ss", "kroupa":"kr"}, \
                 Zdict={"10m4":0.00025, "0001":0.001, "001":0.01, \
-                "002":0.02, "004":0.04, "007":0.07}, verbose=False):
+                "002":0.02, "004":0.04, "007":0.07}, multiD=True, verbose=False):
     """
     Author: Ryan Houghton (20/4/11)
 
@@ -107,6 +113,7 @@ def loadM05ssps(sedpath="~/z/data/stellar_pops/M05", \
        glob    - the REGEXP to select one/all the required metallicities/files 
        IMFdict - a dictionary to convert IMF choice to file name
        Zdict   - a dictionary to convert filenames to metallicities
+       multiD  - defaults to True but for backward compatibility, set to false for list of spectra
     
     """
 
@@ -128,6 +135,21 @@ def loadM05ssps(sedpath="~/z/data/stellar_pops/M05", \
     for fname in files[1:]:
         specs.append(loadM05spec(fname, massfile=massfile))
         if verbose: print "Read "+fname+" (Z="+str(specs[-1].Z)+")"
+
+    # put specs into multiD format
+    if multiD:
+        flams = []
+        ages = []
+        Zs = []
+        masses=[]
+        for s in specs:
+            flams.append(s.flam)
+            ages.append(s.age)
+            masses.append(s.mass)
+            Zs.append(np.tile(np.array(s.Z),s.nspec)) # Z is scalar, not array, so tile up
+        # make multi-D spec
+        specs = t.spectrum(lam=s.lam,lamspec=flams, age=ages, Z=Zs, mass=masses, model="M05", IMF=imf, \
+                           resolution=s.resolution, wavesyst=s.wavesyst)
 
     return specs
     

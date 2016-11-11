@@ -55,7 +55,7 @@ def loadM11ssps(sedpath=basedir, dir=dirprefix, lib="MILES", \
                 Zdict={"10m4":0.00025, "0001":0.001, "001":0.01, \
                 "002":0.02, "004":0.04, "007":0.07}, minAge=0.1, maxAge=None, \
                 RESdict={'Pickles':[500.,None], 'STELIB':[None, (3.1,3.4)], 'MILES':[None, 2.54], \
-                         'ELODIE':[None, 0.55], 'MARCS':[20000,None]}, verbose=False):
+                         'ELODIE':[None, 0.55], 'MARCS':[20000,None]}, multiD=True, verbose=False):
     """
 
     RH 19/8/2016
@@ -100,5 +100,21 @@ def loadM11ssps(sedpath=basedir, dir=dirprefix, lib="MILES", \
     for fname in files:
         specs.append(M05.loadM05spec(fname, massfile=massfile, resolution=RESdict[lib], minAge=minAge, maxAge=maxAge))
         if verbose: print "Read "+fname+" (Z="+str(specs[-1].Z)+")"
+
+    # put specs into multiD format
+    if multiD:
+        flams = []
+        ages = []
+        Zs = []
+        masses=[]
+        for s in specs:
+            flams.append(s.flam)
+            ages.append(s.age)
+            masses.append(s.mass)
+            Zs.append(np.tile(np.array(s.Z),s.nspec)) # Z is scalar, not array, so tile up
+        # make multi-D spec
+        specs = t.spectrum(lam=s.lam,lamspec=flams, age=ages, Z=Zs, mass=masses, model="M05", IMF=imf, \
+                           resolution=s.resolution, wavesyst=s.wavesyst)
+
 
     return specs
