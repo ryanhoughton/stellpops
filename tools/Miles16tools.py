@@ -5,6 +5,8 @@ import os
 import scipy.interpolate as si
 import scipy.constants as const
 
+import pandas as pd
+
 import glob
 
 basedir='/Data/stellarpops/Miles/base_set'
@@ -61,30 +63,71 @@ basedir='/Data/stellarpops/Miles/base_set'
 #     spec=s.spectrum(lamdas, data, userdict=userdict)
 #     return spec
 
-def load_eMILES_spectra(basedir='/Data/stellarpops/Miles/base_set', verbose=True):
+def pandas_read_file(filename):
+    dataframe=pd.read_csv(filename, skiprows=61, delim_whitespace=True, names=['lambda', 'data'])
+    lamdas, data=dataframe['lambda'].as_matrix(), dataframe['data'].as_matrix()
+    return lamdas, data
+
+
+def load_eMILES_spectra(basedir='/Data/stellarpops/Miles', NaFe=0.0, verbose=True):
+
+
+    """
+    Load all the eMILES spectra and save into a dictionary. The dictionary keys are IMF values (e.g. 'bi1.30'), and the values are spectrum classes
+    of spectra with that IMF and a variety of ages. So to get the flams of all the spectra with a Chabrier IMF, you'd do
+
+    spectra['bi1.30'].flam
+
+    """
+
+    if NaFe==0.0:
+        folder='base_set'
+    elif NaFe==0.3:
+        folder='NaFep03'
+    elif NaFe==0.6:
+        folder='NaFep06'
+    elif NaFe==0.9:
+        folder='NaFep09'
+    elif NaFe==1.2:
+        folder='NaFep12'
+    else:
+        raise NameError('NaFe abundance not understood')
 
     #Solar metallicity
 
-    IMFs=['bi0.30', 'bi0.50', 'bi0.80', 'bi1.00', 'bi1.30', 'bi1.50', 'bi1.80', 'bi2.00', 'bi2.30', 'bi2.50', 'bi2.80', 'bi3.00', 'bi3.30', 'bi3.50']
-    Zs=['m2.32', 'm1.71', 'm1.31', 'm0.71', 'm0.40', 'p0.00', 'p0.22']
+    
+    #Full e-Miles models have 7 metallicities
+    #Na enhanced ones only have 3
+    if NaFe==0.0:
+        Zs=['m2.32', 'm1.71', 'm1.31', 'm0.71', 'm0.40', 'p0.00', 'p0.22']
+        IMFs=['bi0.30', 'bi0.50', 'bi0.80', 'bi1.00', 'bi1.30', 'bi1.50', 'bi1.80', 'bi2.00', 'bi2.30', 'bi2.50', 'bi2.80', 'bi3.00', 'bi3.30', 'bi3.50']
+    else:
+        Zs=['m0.40', 'p0.00', 'p0.22']
+        IMFs=['bi0.30', 'bi0.80', 'bi1.00', 'bi1.30', 'bi1.50', 'bi1.80', 'bi2.00', 'bi2.30', 'bi2.50', 'bi2.80', 'bi3.00', 'bi3.30']
+
+    #Empty dictionary to fill
     specs={}
 
     #Work out the lamda array and get the length of the spectrum
-    hdu=fits.open('{}'.format("{}/E{}Z{}T17.7828_iPp0.00_baseFe.fits".format(basedir, 'bi0.30', 'p0.00')))
+    hdu=fits.open('{}'.format("{}/base_set/E{}Z{}T17.7828_iPp0.00_baseFe.fits".format(basedir, 'bi0.30', 'p0.00')))
     header=hdu[0].header
     data=hdu[0].data    
     lamdas=header['CRVAL1']+(np.arange(header['NAXIS1'], dtype=float)+1.0-header['CRPIX1'])*header['CDELT1']
 
 
     if verbose:
-        print "Loading eMILES spectra from {}".format(basedir)
+        print "Loading eMILES spectra from {}/{}".format(basedir, folder)
     for IMF in IMFs:
         #Empty array to store the flams
-        flams=np.empty([len(Zs), 12, len(data)])
+        #Get the number of ages by globbing for the first metallicity
+        tmp=glob.glob("{}/{}/E{}Z{}T??.????_iPp0.00_baseFe*".format(basedir, folder, IMF, Zs[-1]))
+
+        assert len(tmp)==12, 'Something may be wrong- expecting 12 spectra in with ages > 5 gyr, got {}'.format(len(tmp))
+        flams=np.empty([len(Zs), len(tmp), len(data)])
         for i, Z in enumerate(Zs):
 
             #Get all the files with Z=Z and IMF=IMF
-            files=glob.glob("{}/E{}Z{}T??.????_iPp0.00_baseFe.fits".format(basedir, IMF, Z))
+            files=glob.glob("{}/{}/E{}Z{}T??.????_iPp0.00_baseFe*".format(basedir, folder, IMF, Z))
 
             #Sort so the ages are in order
             files.sort(key=lambda x:float(x.split('T')[-1][:7]))
@@ -101,7 +144,7 @@ def load_eMILES_spectra(basedir='/Data/stellarpops/Miles/base_set', verbose=True
                     hdu.close()                
 
                 else:
-                    lamdas, data=np.genfromtxt('{}'.format(file), unpack=True, skip_header=61)
+                    lamdas, data=pandas_read_file('{}'.format(file))
 
 
                 age_pos=file.index('T')+1
@@ -114,7 +157,10 @@ def load_eMILES_spectra(basedir='/Data/stellarpops/Miles/base_set', verbose=True
         ages=np.repeat(ages, len(Zs)).reshape(len(files), len(Zs)).T
         Z_values=np.repeat(Zs, len(files)).reshape(len(Zs), len(files))
 
-        sp=s.spectrum(lamspec=flams, lam=lamdas, age=ages, Z=Z_values, IMF=IMF, model='eMILES', wavesyst="air")
+        userdict={}
+        userdict['NaFe']=NaFe
+
+        sp=s.spectrum(lamspec=flams, lam=lamdas, age=ages, Z=Z_values, IMF=IMF, model='eMILES', wavesyst="air", userdict=userdict)
         specs[IMF]=sp
         if verbose:
             print "Loaded {} SSPs with {} IMF".format(len(files)*len(Zs), IMF)
@@ -197,7 +243,7 @@ def get_np_indices_for_params(IMFs=['bi0.30', 'bi0.50', 'bi0.80', 'bi1.00', 'bi1
     return param_dict
 
 
-def alpha_corrected_index(specs, index, out_sigma, cvd_dir='/Volumes/SPV_SWIFT/Science/CvD/', alpha=0.3, verbose=True):
+def alpha_corrected_index(specs, index, out_sigma, cvd_dir='/Data/stellarpops/CvD1.2', alpha=0.3, verbose=True):
 
     import CvD12tools as cvd
 

@@ -12,7 +12,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def index_index_map(ax, spectra, index1, index2, vary='age', fixed_value='p0.00', alpha=0.0, make_grid=True, cm=plt.get_cmap('magma'), legend_loc='best'):
+def index_index_map(ax, spectra, index1, index2, param_list, param_name, fixed_value='p0.00', alpha=0.0, make_grid=True, c=plt.get_cmap('magma'), legend_loc='best'):
 
     """
     Plot an index-index map of two indices as a function of IMF at fixed age and Z. Then loop through another variable
@@ -40,48 +40,92 @@ def index_index_map(ax, spectra, index1, index2, vary='age', fixed_value='p0.00'
 
     #Horrible hack to get the right ages and Zs
     #I dont think having an Nd array of ages and Zs is a good idea!
-    ages=spectra[IMF].age[0, :]
-    Zs=spectra[IMF].Z[:, 0]
+    all_ages=spectra[IMF].age[0, :]
+    all_Zs=spectra[IMF].Z[:, 0]
     IMFs=sorted(spectra.keys())
 
     chab_index=np.where(np.array(IMFs)=='bi1.30')[0]
 
 
-    array_indices_dict=M16.get_np_indices_for_params(IMFs=sorted(spectra.keys()), ages=ages, Zs=Zs)
+    array_indices_dict=M16.get_np_indices_for_params(IMFs=sorted(spectra.keys()), ages=all_ages, Zs=all_Zs)
 
     marker_sizes=np.linspace(30, 300, len(IMFs))
 
-    if vary=='age':
 
-        assert type(fixed_value)==str, "If we're varying age then the fixed value must be a metallicity!"
-        fixed_index=array_indices_dict[fixed_value]
+        
+    fixed_index=array_indices_dict[fixed_value]
 
+    good_indices=[]
+    for cntr, thing in enumerate(param_list):
 
-        for i, age in enumerate(ages):
+        i=array_indices_dict[thing]
 
-            c=cm(1.0*i/ages.shape[0])
+        good_indices.append(i)
 
-            label=r'Age={:.2} Gyr'.format(age)
-
-            if alpha != 0.0:
-                label=r'{}, $\alpha$={}'.format(label, alpha)
-            if spectra[IMF].NaFe!=0.0:
-                label=r'{}, [NaFe]={}'.format(label, spectra[IMF].NaFe)
+        if type(c)!=tuple:
+            c=cm(1.0*cntr/len(param_list))
+        
 
 
-            ax.plot(x_index_vals[:, fixed_index, i], y_index_vals[:, fixed_index, i], label=label, linewidth=2.0, c=c)
-            ax.scatter(x_index_vals[:, fixed_index, i], y_index_vals[:, fixed_index, i], marker='o', s=marker_sizes, facecolors=c, linewidth=3.0, zorder=8)
+        #import pdb; pdb.set_trace()
 
-            #Colour Chabrier different
-            ax.scatter(x_index_vals[chab_index, fixed_index, i], y_index_vals[chab_index, fixed_index, i], marker='s', s=350, facecolors='b', linewidth=3.0, zorder=8)
-
-        if make_grid==True:
-            for i, IMF in enumerate(IMFs):
-                ax.plot(x_index_vals[i, fixed_index, :], y_index_vals[i, fixed_index, :], c='0.75')
-
-        ax.legend(loc=legend_loc, title="Z={}".format(fixed_value))
+        if param_name=='age':
+            label=r'Age={0:.2f} Gyr'.format(thing)
+            x=x_index_vals[:, fixed_index, i]
+            y=y_index_vals[:, fixed_index, i]
+            x_chab=x_index_vals[chab_index, fixed_index, i]
+            y_chab=y_index_vals[chab_index, fixed_index, i]
 
 
+
+
+        elif param_name=='Z':
+            label='Z={}'.format(thing)
+            
+
+            x=x_index_vals[:, i, fixed_index]
+            y=y_index_vals[:, i, fixed_index]
+
+            x_chab=x_index_vals[chab_index, i, fixed_index]
+            y_chab=y_index_vals[chab_index, i, fixed_index]
+
+            
+
+        else:
+            raise NameError('Param name "{}" not understood'.format(param_name))
+
+
+        if alpha != 0.0:
+            label=r'{}, [$\alpha$/Fe]=+{}'.format(label, alpha)
+        if spectra[IMF].NaFe!=0.0:
+            label=r'{}, [Na/Fe]=+{}'.format(label, spectra[IMF].NaFe)
+
+
+        ax.plot(x, y, label=label, linewidth=2.0, c=c)
+        ax.scatter(x, y, marker='o', s=marker_sizes, facecolors=c, linewidth=3.0, zorder=8)
+
+        #Colour Chabrier different
+        ax.scatter(x_chab, y_chab, marker='s', s=350, facecolors='green', linewidth=3.0, zorder=8)
+
+    if make_grid==True:
+        for i, IMF in enumerate(IMFs):
+            if param_name=='age':
+                x_grid=x_index_vals[i, fixed_index, good_indices]
+                y_grid=y_index_vals[i, fixed_index, good_indices]
+            elif param_name=='Z':
+                x_grid=x_index_vals[i, good_indices, fixed_index]
+                y_grid=y_index_vals[i, good_indices, fixed_index]
+            ax.plot(x_grid, y_grid, c='0.75')
+
+
+
+    line_legend=ax.legend(loc=legend_loc, title="Age = {} Gyr".format(fixed_value), fontsize=20)
+    ax.get_legend().get_title().set_fontsize('20')
+
+    ax.add_artist(line_legend)
+
+
+    """
     elif vary=='Z':
         assert type(fixed_value)!=str, "If we're varying Z then the fixed value must be an age!"
         fixed_index=array_indices_dict[fixed_value]
@@ -105,126 +149,245 @@ def index_index_map(ax, spectra, index1, index2, vary='age', fixed_value='p0.00'
 
         if make_grid==True:
             for i, IMF in enumerate(IMFs):
-                ax.plot(x_index_vals[i, :, fixed_index], y_index_vals[i, :, fixed_index], c='0.75')
+                ax.plot(, c='0.75')
 
         ax.legend(loc=legend_loc, title="Age={} Gyr".format(fixed_value))
 
 
     else:
         raise 'Axis to vary not understood!'
+    """
 
-    ax.set_xlabel('{}'.format(index1['name']))
-    ax.set_ylabel('{}'.format(index2['name']))
+
 
     
     return ax
 
+def make_alpha_arrow(fig, ax, specs, alpha, index1, index2, arrow_start, **kwargs):
+
+
+    all_ages=specs['bi1.30'].age[0, :]
+    all_Zs=specs['bi1.30'].Z[:, 0]
+    IMFs=sorted(specs.keys())
+
+    array_indices_dict=M16.get_np_indices_for_params(IMFs=sorted(specs.keys()), ages=all_ages, Zs=all_Zs)
+
+
+
+    arrow_xvals=np.empty(2)
+    arrow_yvals=np.empty(2)
+
+
+    arrow_xvals[0]=M16.alpha_corrected_index(specs['bi1.30'], index1, 200.0, alpha=alpha, verbose=False)[array_indices_dict['p0.00'], array_indices_dict[14.125]]
+    arrow_yvals[0]=M16.alpha_corrected_index(specs['bi1.30'], index2, 200.0, alpha=alpha, verbose=False)[array_indices_dict['p0.00'], array_indices_dict[14.125]]
+
+    arrow_xvals[1]=M16.alpha_corrected_index(specs['bi1.30'], index1, 200.0, alpha=0.0, verbose=False)[array_indices_dict['p0.00'], array_indices_dict[14.125]]
+    arrow_yvals[1]=M16.alpha_corrected_index(specs['bi1.30'], index2, 200.0, alpha=0.0, verbose=False)[array_indices_dict['p0.00'], array_indices_dict[14.125]]
+
+    dx=arrow_xvals[1]-arrow_xvals[0]
+    dy=arrow_yvals[1]-arrow_yvals[0]
+
+    x0, y0=arrow_start
+
+
+
+    ax.annotate('', xytext=(x0, y0), xy=(x0+dx, y0+dy), xycoords='data', textcoords='data',arrowprops=dict(facecolor='black', shrink=0.0))
+    ax.annotate(r'$\delta[\alpha /Fe]=-0.3$', xytext=(0, -10), xy=(x0+dx, y0+dy), xycoords='data', textcoords='offset pixels',horizontalalignment='center', verticalalignment='top', **kwargs)
+
+    #ax.arrow(x0, y0, dx, dy, length_includes_head=True, **kwargs)
+
+    return ax
+
+def make_Z_arrow(fig, ax, specs, index1, index2, arrow_start, **kwargs):
+
+
+    all_ages=specs['bi1.30'].age[0, :]
+    all_Zs=specs['bi1.30'].Z[:, 0]
+    IMFs=sorted(specs.keys())
+
+    array_indices_dict=M16.get_np_indices_for_params(IMFs=sorted(specs.keys()), ages=all_ages, Zs=all_Zs)
+
+
+
+    arrow_xvals=np.empty(2)
+    arrow_yvals=np.empty(2)
+
+
+    index_xvals=M16.alpha_corrected_index(specs['bi1.30'], index1, 200.0, alpha=0.0, verbose=False)
+    index_yvals=M16.alpha_corrected_index(specs['bi1.30'], index2, 200.0, alpha=0.0, verbose=False)
+
+    x=[ index_xvals[array_indices_dict['m0.40'], array_indices_dict[14.125]], index_xvals[array_indices_dict['p0.00'], array_indices_dict[14.125]], index_xvals[array_indices_dict['p0.22'], array_indices_dict[14.125]] ]
+    y=[ index_yvals[array_indices_dict['m0.40'], array_indices_dict[14.125]], index_yvals[array_indices_dict['p0.00'], array_indices_dict[14.125]], index_yvals[array_indices_dict['p0.22'], array_indices_dict[14.125]] ]
+
+    dx=x[0]-x[1]
+    dy=y[0]-y[1]
+
+    x0, y0=arrow_start
+
+
+    ax.annotate('', xytext=(x0, y0), xy=(x0+dx, y0+dy), xycoords='data', textcoords='data',arrowprops=dict(facecolor='black', shrink=0.0))
+    ax.annotate(r'$\delta[Z/H]=-0.22$', xytext=(0, -10), xy=(x0+dx, y0+dy), xycoords='data', textcoords='offset pixels', horizontalalignment='center', verticalalignment='top', **kwargs)
+
+    return ax
+
+
+
+
+
+
+def _plot_data(fig, ax, x, y, xerr, yerr, R, radial_cbar=True, marker='o'):
+
+    if radial_cbar==True:
+        plot=ax.scatter(x, y, s=250, c=R, marker=marker, linewidths=2.0, cmap='inferno', zorder=9, edgecolors='k')
+        
+        a,b,c =ax.errorbar(x, y, xerr=xerr, yerr=yerr, fmt='', zorder=8, c='k')
+
+        clb=fig.colorbar(plot, ax=ax)
+        #max and min arcseconds from the NGC1277 data
+        clb.set_clim(vmin=0.0, vmax=6.4)
+        r_colour = clb.to_rgba(R)
+        c[0].set_color(r_colour)
+        c[1].set_color(r_colour)
+        clb.ax.tick_params(labelsize=30.0)
+        clb.set_label(r'R ($^{\prime\prime}$)', size=30.0)
+
+
+    else:
+        ax.errorbar(x, y, xerr=xerr, yerr=yerr, fmt=marker, ms=24, c='w', mec='k', mew=2.0, ecolor='k', zorder=10)
+        plot=None
+
+    return ax, plot
+
 
     
 if __name__=='__main__':
-    #Used for testing things
 
 
 
     specs=M16.load_eMILES_spectra(NaFe=0.0)
 
     NaFep03_specs=M16.load_eMILES_spectra(NaFe=0.3)
+    NaFep06_specs=M16.load_eMILES_spectra(NaFe=0.6)
+    NaFep09_specs=M16.load_eMILES_spectra(NaFe=0.9)
+
+
+
+    #NaFep06_specs=M16.load_eMILES_spectra(NaFe=0.6)
 
     CvDinds=IT.getCvD12IndicesAir(verbose=False)
 
 
+    #plot_Zs=['m0.40', 'p0.00', 'p0.22']
+    plot_Zs=['p0.22']
+
+
+
+
+    cm=plt.get_cmap('winter')
 
     
-    def plot(figs, axs, GalName, data_fname, global_fname, marker, colour):
 
-        fig1, fig2, fig3, fig4=figs
-        ax1, ax2, ax3, ax4=axs
+    def Na_Mg_plot(fig, ax, radial_fname, global_fname, GalName, cm=plt.get_cmap('winter')):
 
-        fname1='MILES_NaI_MgI_fixed_age_{}.pdf'.format(GalName)
-        fname2='MILES_FeH_TiO_fixed_age_{}.pdf'.format(GalName)
+        ax=index_index_map(ax, NaFep03_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.3), legend_loc='best')
+        ax=index_index_map(ax, NaFep06_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.6), legend_loc='best')
+        ax=index_index_map(ax, NaFep09_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.99), legend_loc='best')
 
+        R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(radial_fname, unpack=True)
+        ax, plot=_plot_data(fig, ax, Na, Mg, Na_err, Mg_err, R, radial_cbar=True)
 
+        R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(global_fname, unpack=True)
+        ax, _=_plot_data(fig, ax, Na, Mg, Na_err, Mg_err, R, radial_cbar=False)
 
-        ax1=index_index_map(ax1, specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='Z', fixed_value=14.125)
-        ax2=index_index_map(ax2, specs, CvDinds.FeH99, CvDinds.TiO89, vary='Z', fixed_value=14.125)
+        ax=make_alpha_arrow(fig, ax, NaFep03_specs, 0.3, CvDinds.NaIsdss, CvDinds.MgI88, arrow_start=(1.7, 0.32), **{'fontsize':20.0})
 
-        ax1=index_index_map(ax1, specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='Z', fixed_value=14.125, alpha=0.3, cm=plt.get_cmap('rainbow'))
-        ax2=index_index_map(ax2, specs, CvDinds.FeH99, CvDinds.TiO89, vary='Z', fixed_value=14.125, alpha=0.3, cm=plt.get_cmap('rainbow'))
+        ax=make_Z_arrow(fig, ax, NaFep03_specs, CvDinds.NaIsdss, CvDinds.MgI88, arrow_start=(1.7, 0.32), **{'fontsize':20.0})
 
-        ax1=index_index_map(ax1, NaFep03_specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='Z', fixed_value=14.125, cm=plt.get_cmap('viridis'))
-        ax2=index_index_map(ax2, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  vary='Z', fixed_value=14.125, cm=plt.get_cmap('viridis'))
+        ax.set_xlabel(r'NaI$_{SDSS}$ (\AA)')
+        ax.set_ylabel(r'MgI (\AA)')
+
+        leg = ax.legend([plot], [GalName], loc='lower right', frameon=False, numpoints=1, scatterpoints=1, fontsize=20)
+
+        return ax
+        
+#ax1=make_Z_line(fig1, ax1, NaFep03_specs,CvDinds.NaIsdss, CvDinds.MgI88, **{'ls':'dashed', 'marker':'*', 'ms':[10, 15, 20], 'c':'k', 'zorder':5})
+    
+    def FeH_TiO_plot(fig, ax, radial_fname, global_fname, GalName, cm=plt.get_cmap('winter')):
+    
+        #ax2=index_index_map(ax2, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.0, make_grid=True, c=cm(0.3), legend_loc='best')
+        ax=index_index_map(ax, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.3), legend_loc='best')
 
         
+        #ax=index_index_map(ax, NaFep06_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.0, make_grid=True, c=cm(0.6), legend_loc='best')
+        ax=index_index_map(ax, NaFep06_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.6), legend_loc='best')
 
-        fname3='MILES_NaI_MgI_fixed_Z_{}.pdf'.format(GalName)
-        fname4='MILES_FeH_TiO_fixed_Z_{}.pdf'.format(GalName)
-
-        ax3=index_index_map(ax3, specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='age', fixed_value='p0.00')
-        ax4=index_index_map(ax4, specs, CvDinds.FeH99, CvDinds.TiO89, vary='age', fixed_value='p0.00')
-
-        ax3=index_index_map(ax3, NaFep03_specs, CvDinds.NaIsdss, CvDinds.MgI88, vary='age', fixed_value='p0.00', cm=plt.get_cmap('viridis'))
-        ax4=index_index_map(ax4, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  vary='age', fixed_value='p0.00', cm=plt.get_cmap('viridis'))
+        
+        #ax=index_index_map(ax, NaFep09_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.0, make_grid=True, c=cm(0.99), legend_loc='best')
+        ax=index_index_map(ax, NaFep09_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.99), legend_loc='best')
 
 
-                
-        R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(data_fname, unpack=True)
-        for x, y, xerr, yerr in zip(Na, Mg, Na_err, Mg_err):
-            ax1.errorbar(x, y, xerr=xerr, yerr=yerr, mfc=colour, fmt=marker, mew=3.0, mec='k', ms=10, zorder=9)
-            ax3.errorbar(x, y, xerr=xerr, yerr=yerr, mfc=colour, fmt=marker, mew=3.0, mec='k', ms=10, zorder=9)
-
-        for x, y, xerr, yerr in zip(FeH, TiO, FeH_err, TiO_err):
-            ax2.errorbar(x, y, xerr=xerr, yerr=yerr, mfc=colour, fmt=marker, mew=3.0, mec='k', ms=10, zorder=9)
-            ax4.errorbar(x, y, xerr=xerr, yerr=yerr, mfc=colour, fmt=marker, mew=3.0, mec='k', ms=10, zorder=9)
+        
+        R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(radial_fname, unpack=True)
+        ax, plot=_plot_data(fig, ax, FeH, TiO, FeH_err, TiO_err, R, radial_cbar=True)
 
 
+        R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(global_fname, unpack=True)            
+        ax, _=_plot_data(fig, ax, FeH, TiO, FeH_err, TiO_err, R, radial_cbar=False)
 
-       
-        R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(global_fname, unpack=True)
-        ax1.errorbar(Na, Mg, xerr=Na_err, yerr=Mg_err, mfc='w', fmt=marker, mew=3.0, mec='k', ms=10, zorder=10)
-        ax3.errorbar(Na, Mg, xerr=Na_err, yerr=Mg_err, mfc='w', fmt=marker, mew=3.0, mec='k', ms=10, zorder=10)
-        ax2.errorbar(FeH, TiO, xerr=FeH_err, yerr=TiO_err, mfc='w', fmt=marker, mew=3.0, mec='k', ms=10, zorder=10)
-        ax4.errorbar(FeH, TiO, xerr=FeH_err, yerr=TiO_err, mfc='w', fmt=marker, mew=3.0, mec='k', ms=10, zorder=10)
+        ax=make_alpha_arrow(fig, ax, specs, 0.3, CvDinds.FeH99, CvDinds.TiO89, arrow_start=(0.1, 1.07), **{'fontsize':20.0})
 
+        ax=make_Z_arrow(fig, ax, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89, arrow_start=(0.1, 1.07), **{'fontsize':20.0})    
 
-        #######################################
+        ax.set_xlabel(r'FeH (\AA)')
+        ax.set_ylabel(r'TiO')
 
-        ax1.set_xlim([0.2, 1.4])
-        ax1.set_ylim([0.35, 0.65])
+        leg = ax.legend([plot], [GalName], loc='lower right', frameon=False, numpoints=1, scatterpoints=1, fontsize=20)
 
-        ax3.set_xlim([0.2, 1.4])
-        ax3.set_ylim([0.35, 0.65])
+  
+        return ax
 
-        ax2.set_xlim([0.0, 0.9])
-        ax2.set_ylim([1.02, 1.09])
+    plt.style.use('publication')
 
-        ax4.set_xlim([0.0, 0.9])
-        ax4.set_ylim([1.02, 1.09])
-
-        #######################################
-
-        for fig, fname in zip([fig1, fig2, fig3, fig4], [fname1, fname2, fname3, fname4]):
-            fig.savefig(fname)
-
+    plt.rc('text', usetex=True)
+    plt.rc('font', family='serif')
 
     fig1, ax1=plt.subplots(figsize=(16.5, 11.6))
     fig2, ax2=plt.subplots(figsize=(16.5, 11.6))
+
+    N='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/NGC1277.txt'
+    GN='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/GLOBAL_NGC1277.txt'
+
+
+    ax1=Na_Mg_plot(fig1, ax1, N, GN, GalName=r'NGC~1277')
+    ax2=FeH_TiO_plot(fig2, ax2, N, GN, GalName=r'NGC~1277')
+
+    fig1.savefig("NGC1277_NaI_Mg_MILES_index_index_map.pdf", bbox_inches='tight')
+    fig2.savefig("NGC1277_FeH_TiO_MILES_index_index_map.pdf", bbox_inches='tight')
+
+
+
+
+
+
     fig3, ax3=plt.subplots(figsize=(16.5, 11.6))
     fig4, ax4=plt.subplots(figsize=(16.5, 11.6))
 
-    fig5, ax5=plt.subplots(figsize=(16.5, 11.6))
-    fig6, ax6=plt.subplots(figsize=(16.5, 11.6))
-    fig7, ax7=plt.subplots(figsize=(16.5, 11.6))
-    fig8, ax8=plt.subplots(figsize=(16.5, 11.6))
 
-    N='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/NGC1277.txt'
     I='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/IC843.txt'
-
-    GN='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/GLOBAL_NGC1277.txt'
-    IN='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/GLOBAL_NGC1277.txt'
+    GI='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/GLOBAL_IC843.txt'
 
 
-    plot([fig1, fig2, fig3, fig4], [ax1, ax2, ax3, ax4], 'NGC1277', N, GN, 'D', 'b')
-    plot([fig5, fig6, fig7, fig8], [ax5, ax6, ax7, ax8], 'IC843', I, GN, 'o', 'r')
+    ax3=Na_Mg_plot(fig3, ax3, I, GI, GalName=r'IC~843')
+    ax4=FeH_TiO_plot(fig4, ax4, I, GI, GalName=r'IC~843')
 
-    plt.show()
+    fig3.savefig("IC843_NaI_Mg_MILES_index_index_map.pdf", bbox_inches='tight')
+    fig4.savefig("IC843_FeH_TiO_MILES_index_index_map.pdf", bbox_inches='tight')
+
+
+    """
+    for ax in [ax1, ax2]:
+        ax.tick_params(axis='both', labelsize=tick_label_size)
+    """
+
+#    plt.show()
 
