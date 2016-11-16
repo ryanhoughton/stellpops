@@ -27,6 +27,10 @@ class spectrum:
     Purpose: A spectrum object to aid manipulation of wavelength/frequency and the associated
              flux values
 
+             Originally developed to calculate magnitudes of various SPS models at different ages/metallicities.
+
+             Now adapted to also calculate spectral indices over specific absorption lines. 
+
     Inputs:
     This class MUST be initalised with EITHER
        lamspec - a NLAMxNSPEC numpy array with [:,0] being the wavelength array (AA) and [:,1:] being
@@ -332,6 +336,69 @@ class spectrum:
             
         return newspec
 
+
+    def getOrderOfDims(self):
+        """
+        For a multiD format, the spectra are ordered in a multi dimensional array.
+        This functions returns which parameter is associated with each dimension, e.g. age, alpha, Z, etc.
+
+        """
+
+        # calc uniq values 
+        uvals = self.calcUniqAttrs(augment=False)
+        # get dims
+        loc = np.array(self.dims)
+        # loop over dims, finding which one has same length as each array attrs
+        dims = []
+        for uv in uvals.keys():
+            dim = np.where(loc==uvals[uv].size)[0]
+            if len(dim)!=1:
+                warn.warn("Failed to find dimension for "+uv)
+            else:
+                dims.append(dim[0])
+        dims = np.array(dims)
+        dims = dims.max()-dims # last value in dims is 1st dimension
+        sdims = dims.argsort()
+        dimOrder = np.array(uvals.keys())[sdims]
+
+        return dimOrder
+
+    def calcUniqAttrs(self, augment=True):
+        """
+        Calculate the unique values for all array attributes
+        """
+
+        uvals = {}
+        # loop over array attributes
+        for attr in self.arrayAttrs:
+            # make sure values set
+            if getattr(self,attr) is not None:
+                # find uniq vals
+                temp = self._uniqueAttr(attr, augment=False)
+                uvals.update({attr:temp})
+        # return or augment
+        if augment:
+            self.uniqueAttrs = uvals
+        else:
+            return uvals
+
+    def _uniqueAttr(self, attr, augment=False):
+        """
+        Calculate the unique values of the given attribute
+        """
+
+        # get attr vals
+        attrVals = getattr(self, attr)
+        # sanity check
+        assert attrVals is not None, "Cannot find any values for attr:"+attr
+        # make uniq array
+        uattr = np.array(list(set(list(attrVals.ravel()))))
+        uattr.sort()
+        if augment:
+            setattr(self,"u"+attr, uattr)
+        else:
+            return uattr
+
     def calcResolution(self, wave):
         """
         RH 21/10/16
@@ -388,7 +455,7 @@ class spectrum:
         # start if, elif, etc loop
         if R is not None:
             # simple case - single R value
-            resAA = wave/r
+            resAA = wave/R
         elif (isinstance(FWHM,float) or isinstance(FWHM,int)):
             # another simple case - single FWHM given
             resAA = FWHM
@@ -440,6 +507,7 @@ class spectrum:
         """
         # unrasterise spectra - flam and fmu
         self.originalDims = self.dims
+        self.originalFDims = self.flam.shape
         # make sure flam or fmu exists before reshaping - as we use this function in calclamspec/calcmuspec, where
         # the other type hasn't been created yet
         if hasattr(self,"flam"):
@@ -451,7 +519,8 @@ class spectrum:
             if self.efmu is not None:
                 self.efmu = self.efmu.reshape((-1, self.nmu))
         
-        self.dims = list(self.flam.shape[:-1])
+        self.dims = self.flam.shape[:-1]
+        self.fdims = self.flam.shape
 
         # can't do this - in case fmu not defined yet
         #assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
@@ -480,11 +549,28 @@ class spectrum:
         # only unraster if not scalar attribute
         if (not np.isscalar(getattr(self,attr))) and (getattr(self,attr) is not None):
             # sanity check
-            assert np.all(np.equal(np.array(getattr(self, attr).shape),self.originalDims)), \
-                   attr+" attribute does not have same dimensions as spectra"
-            setattr(self, attr, getattr(self,attr).reshape(self.dims))
-            # keep a tally of which attrs were unrastered
-            self.unrasteredAttrs.append(attr)
+            ndims = len(self.originalDims)
+            attrShape = getattr(self, attr).shape
+            nAdims = len(attrShape)
+            # check for array attribute
+            if nAdims == ndims:
+                firstCheck = np.all(np.equal(attrShape, self.originalDims)) # attr has shape like age, Z, etc
+                assert firstCheck, \
+                   attr+" attribute does not have same dimensions as array attribute."
+                setattr(self, attr, getattr(self,attr).reshape(self.dims))
+                # keep a tally of which attrs were unrastered
+                self.unrasteredAttrs.append(attr)
+            # check for flux attribute
+            elif nAdims==ndims+1:
+                secondCheck = np.all(np.equal(attrShape, self.originalFDims))
+                assert secondCheck, \
+                   attr+" attribute does not have same dimensions as spectra."
+                setattr(self, attr, getattr(self,attr).reshape(self.fdims))
+                # keep a tally of which attrs were unrastered
+                self.unrasteredAttrs.append(attr)
+            else:
+                raise ValueError("Attr dimensions not understood.")
+            
 
     def reraster(self):
         """
@@ -510,7 +596,9 @@ class spectrum:
 
         # reset dims
         self.unrasterDims = cp.copy(self.dims)
+        self.unrasterFDims = cp.copy(self.fdims)
         self.dims = cp.copy(self.originalDims)
+        self.fdims = cp.copy(self.originalFDims)
         # sanity check
         assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
                "Re-rasterised flam and fmu have different shapes?"
@@ -536,12 +624,27 @@ class spectrum:
         # only unrasterise if not scalar attribute.
         # Although this should never be a problem, as _rerasterise is called with args from self.unrasteredAttrs
         if (not np.isscalar(getattr(self,attr))) and (getattr(self,attr) is not None):
-            # sanity check
-            assert np.all(np.equal(np.array(getattr(self, attr).shape),self.unrasterDims)), \
-                   attr+" attribute does not have same dimensions as spectra"
-            setattr(self, attr, getattr(self,attr).reshape(self.dims))
-            # remove this attr from the unraster list
-            self.unrasteredAttrs.remove(attr)
+            ndims = len(self.unrasterDims)
+            attrShape = getattr(self, attr).shape
+            nAdims = len(attrShape)
+            # check for array attrs
+            if nAdims==ndims:
+                # sanity check
+                firstCheck = np.all(np.equal(attrShape,self.unrasterDims)) # attr has shape like age, Z, etc
+                assert firstCheck, \
+                   attr+" attribute does not have same dimensions as array attribute."
+                setattr(self, attr, getattr(self,attr).reshape(self.dims))
+                # remove this attr from the unraster list
+                self.unrasteredAttrs.remove(attr)
+            elif nAdims == ndims+1:
+                secondCheck = np.all(np.equal(attrShape, self.unrasterFDims))
+                assert secondCheck, \
+                   attr+" attribute does not have same dimensions as spectra."
+                setattr(self, attr, getattr(self,attr).reshape(self.fdims))
+                # remove this attr from the unraster list
+                self.unrasteredAttrs.remove(attr)
+            else:
+                raise ValueError("Attr dimensions not understood.")
             
     def getShape(self):
         """
@@ -901,13 +1004,15 @@ class spectrum:
         count=0
         creg_spec=[]
         for rs in reg_spec:
-            count=count+1
+            count+=1
             creg_spec.append(np.convolve(rs,ky,'same'))
             if verbose: print "Convolved spec "+str(count)+" of "+str(len(reg_spec))
 
         # interpolate back to original sampling
         cspec=[]
+        count=0
         for crs in creg_spec:
+            count+=1
             cspec.append(interpolate(reg_lam,crs,self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear'))
             if verbose: print "Interpolated spec "+str(count)+" of "+str(len(creg_spec))+" onto regular wavelength grid"
 
@@ -935,9 +1040,9 @@ class spectrum:
         global c
 
         # get minimum vel resolution in spec and use this for dloglam
-        velscale = np.min((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 # km/s
+        velscale = np.mean((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 #np.min((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 # km/s
         dloglam = np.log10(1.0 + velscale/c*1e3)
-        nloglam = np.round((np.log10(self.lam.max())-np.log10(self.lam.min())) / dloglam)
+        nloglam = self.nlam #np.round((np.log10(self.lam.max())-np.log10(self.lam.min())) / dloglam)
         self.velscale=velscale
         
         # calc regular loglam grid
@@ -953,6 +1058,7 @@ class spectrum:
             self.floglam.append(interpolate(self.lam,flam,self.loglam, fill_value=np.nan, \
                                             bounds_error=False, method=1, kind='linear'))
             if verbose: print "Interpolated spec "+str(count)+" of "+str(len(self.flam))
+        self.floglam = np.atleast_2d(singleOrList2Array(self.floglam))
 
         # if kernel not passed, create it.
         if losvd == None: # speed up if losvd passed
@@ -992,13 +1098,14 @@ class spectrum:
         for floglam in self.floglam:
             count=count+1
             confloglam = np.convolve(floglam,losvd,'same')
-            self.confloglam=confloglam
+            self.confloglam.append(confloglam)
             # interpolate back onto origial grid
-            self.conflam.append(interpolate(self.loglam, self.confloglam, self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear'))
+            self.conflam.append(interpolate(self.loglam, confloglam, self.lam, fill_value=np.nan, bounds_error=False, method=1, kind='linear'))
             if verbose: print "Convolved spec "+str(count)+" of "+str(len(self.floglam))
 
         self.confloglam = np.atleast_2d(singleOrList2Array(self.confloglam))
         self.conflam = np.atleast_2d(singleOrList2Array(self.conflam))
+        
         
         if overwrite:
             self.flam = self.conflam

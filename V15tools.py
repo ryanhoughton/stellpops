@@ -15,7 +15,7 @@ import copy as cp
 V15path='/home/houghton/z/data/stellar_pops/Vaz15/'
 
 
-def loadV15ssps(V15path=V15path, verbose=True):
+def loadV15ssps(V15path=V15path, ageRange=None, ZRange=None, exactIMFs=None, exactAlphas=None, verbose=True):
     """
     Ryan Houghton
     4/10/16
@@ -25,10 +25,22 @@ def loadV15ssps(V15path=V15path, verbose=True):
 
     Inputs:
     - filepath: Path and filename string of FITS file for V03 SED
+    - ageRange\_ Give the min and max values for age/Z
+    - ZRange  /
+    - exactIMFs   : give a list of IMFs to load: 'un:1.30'
+    - exactAlphas : give a list of alphas to load: 'Ep0.00', 'Ep0.40', 'baseFe' 
 
     Outputs:
     - spectrum: A spectrum class for the given SSP SED.
                 Initialised with units (lambda=A, flux=erg/s/cm2/A) @ D=10pc
+
+
+    e.g.
+    from stellpops import V15tools as v15
+    # load all available models on disk
+    vall = v15.loadV15ssps()
+    # load a subset of the models:
+    vsub = v15.loadV15ssps(ZRange=[0.0,0.3], exactAlphas=['Ep0.00','Ep0.40'], ageRange=[0.1,3.0], verbose=True)
 
     """
 
@@ -74,9 +86,14 @@ def loadV15ssps(V15path=V15path, verbose=True):
     uimfs.sort()
 
     if verbose:
-        print "Found IMF : ", uimfs
+        print "Found IMFs : ", uimfs
         print "Found Z values:", uZs
         print "Found alpha types: ", ualphas
+        print "Found ages ", uages
+
+    # clip the parameter ranges if asked
+    uages, ualphas, uZs, uimfs = clipParamRanges(uages, ualphas, uZs, uimfs, \
+                                          ageRange=ageRange, ZRange=ZRange, exactAlphas=exactAlphas, exactIMFs=exactIMFs, verbose=verbose)
 
     nimfs = len(uimfs)
     nZs   = len(uZs)
@@ -94,7 +111,7 @@ def loadV15ssps(V15path=V15path, verbose=True):
         for Zi, Z in zip(range(nZs), uZs): 
             for Ai, A in zip(range(nalphas), ualphas): 
                 # load specs for all ages, fixed alpha, Z, IMF
-                spec = loadV15specs(V15path, imf=imf, Z=Z, A=A, verbose=verbose)
+                spec = loadV15specs(V15path, imf=imf, Z=Z, A=A, ageRange=ageRange, verbose=verbose)
 
                 aflams[ii][Zi][Ai].append(spec.flam)
                 aages[ii][Zi][Ai].append(spec.age)
@@ -104,12 +121,56 @@ def loadV15ssps(V15path=V15path, verbose=True):
                 
     specs = st.spectrum(lam=spec.lam, lamspec=np.array(aflams), \
                         age=np.array(aages), alpha=np.array(aalphas), \
-                        Z=np.array(aZs), IMF=np.array(aIMFs), resolution=[[None],[2.56]], wavesyst="air")
+                        Z=np.array(aZs), IMF=np.array(aIMFs), resolution=[None,2.56], wavesyst="air")
     
     # return the dict
     return specs
 
-def loadV15specs(V15path, imf='um:1.3', Z=0.0, A=0.0, verbose=True):
+def clipParamRanges(uages, ualphas, uZs, uimfs, \
+                    ageRange=None, ZRange=None, exactAlphas=None, exactIMFs=None, verbose=False):
+    """
+    Clip the parameter ranges if asked, to avoid always loading in the entire library.
+    """
+
+    agetest = ageRange is not None
+    Ztest = ZRange is not None
+    atest = exactAlphas is not None
+    itest = exactIMFs is not None
+    if agetest:
+        uages = np.array(uages)
+        aR=np.array(ageRange)
+        ageloc = np.where((uages >= aR.min()) & (uages <=aR.max()))[0]
+        uages = uages[ageloc]
+    if Ztest:
+        uZs = np.array(uZs)
+        ZR=np.array(ZRange)
+        Zloc = np.where((uZs >= ZR.min()) & (uZs <=ZR.max()))[0]
+        uZs = uZs[Zloc]
+    if atest:
+        aloc=[]
+        ualphas=np.array(ualphas)
+        for aval in exactAlphas:
+            aloc.append(np.where(ualphas==aval)[0][0])
+        aloc=np.array(aloc)
+        ualphas=ualphas[aloc]
+
+    if itest:
+        iloc=[]
+        uimfs=np.array(uimfs)
+        for ival in exactIMFs:
+            iloc.append(np.where(uimfs==ival)[0][0])
+        iloc=np.array(iloc)
+        uimgs=uimfs[iloc]
+
+    if (agetest or Ztest or atest or itest) and verbose:
+        print "Loading IMFs : ", uimfs
+        print "Loading Z values:", uZs
+        print "Loading alpha types: ", ualphas
+        print "Loading ages: ", uages
+            
+    return uages, ualphas, uZs, uimfs
+
+def loadV15specs(V15path, imf='um:1.3', Z=0.0, A=0.0, ageRange=None, verbose=True):
     """
     Load the V15 specs for a given alpha, Z, IMF (i.e. ALL ages)
     """
@@ -154,20 +215,26 @@ def loadV15specs(V15path, imf='um:1.3', Z=0.0, A=0.0, verbose=True):
         if (splits[1][0]=="m"): pm=pm*-1.
         Z=float(splits[1][1:])*pm
         thisage=float(splits[2])
-        theseages.append(thisage)
-        alpha=splits[3]
-        alphatype=splits[4]
-        # load file into memory
-        h=pf.open(flong, mode='readonly', memmap=False)
-        #sanity check
-        assert (crval==h[0].header['CRVAL1'] and cdelt==h[0].header['CDELT1'] and \
-                crpix==h[0].header['CRPIX1'] and naxis==h[0].header['NAXIS1']), \
-                "This spectrum ("+f+") doesn't match the format of the first"
-        # make flux array
-        factor= st.L_sun/(4.*np.pi*(10.0*st.pc*100.0)**2.0)
-        flux = h[0].data * factor
-        fluxes.append(flux) # save flux
-        h.close() # close file
+
+        # check if ageRange specified
+        if ageRange is not None:
+            aR = np.array(ageRange)
+            # if ageRange given, only add spectra within this age range
+            if (thisage >= aR.min()) & (thisage <= aR.max()):
+                theseages.append(thisage)
+                alpha=splits[3]
+                alphatype=splits[4]
+                # load file into memory
+                h=pf.open(flong, mode='readonly', memmap=False)
+                #sanity check
+                assert (crval==h[0].header['CRVAL1'] and cdelt==h[0].header['CDELT1'] and \
+                        crpix==h[0].header['CRPIX1'] and naxis==h[0].header['NAXIS1']), \
+                        "This spectrum ("+f+") doesn't match the format of the first"
+                # make flux array
+                factor= st.L_sun/(4.*np.pi*(10.0*st.pc*100.0)**2.0)
+                flux = h[0].data * factor
+                fluxes.append(flux) # save flux
+                h.close() # close file
 
     # make wavelength array
     lam = crval + np.arange(naxis) * cdelt
@@ -175,21 +242,3 @@ def loadV15specs(V15path, imf='um:1.3', Z=0.0, A=0.0, verbose=True):
     spec = st.spectrum(lamspec=fluxes, lam=lam, age=theseages, Z=Z, model="V15", IMF=imftype+str(imfslope), wavesyst="air")
 
     return spec
-"""
-
-Look at which bits of spectrum vary more for Z than for A:
-
-pl.plot(vs['I=un:1.30']['Z=0.4']['A=Ep0.00'].flam[40]/vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].flam[40], vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].flam[40]/vs['I=un:1.30']['Z=0.06']['A=Ep0.40'].flam[40], ".", alpha=0.2)
-
-pl.plot(x,x*1.35-0.07,"k-")
-
-
-loc=np.where(vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].flam[40]/vs['I=un:1.30']['Z=0.06']['A=Ep0.40'].flam[40] > (vs['I=un:1.30']['Z=0.4']['A=Ep0.00'].flam[40]/vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].flam[40]*1.35-0.07))[0]
-
-pl.figure()
-pl.plot(vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].lam,vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].flam[40])
-pl.plot(vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].lam[loc],vs['I=un:1.30']['Z=0.06']['A=Ep0.00'].flam[40][loc], "ro")
-
-
-
-"""
