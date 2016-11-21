@@ -80,7 +80,10 @@ def index_index_map(ax, spectra, index1, index2, param_list, param_name, fixed_v
 
 
         elif param_name=='Z':
-            label='Z={}'.format(thing)
+            if "p" in thing:
+                label='[Z/H]=+{}'.format(thing.strip("p"))
+            else:
+                label='[Z/H]=-{}'.format(thing.strip("m"))
             
 
             x=x_index_vals[:, i, fixed_index]
@@ -97,8 +100,8 @@ def index_index_map(ax, spectra, index1, index2, param_list, param_name, fixed_v
 
         if alpha != 0.0:
             label=r'{}, [$\alpha$/Fe]=+{}'.format(label, alpha)
-        if spectra[IMF].NaFe!=0.0:
-            label=r'{}, [Na/Fe]=+{}'.format(label, spectra[IMF].NaFe)
+        #if spectra[IMF].NaFe!=0.0:
+        label=r'{}, [Na/Fe]=+{}'.format(label, spectra[IMF].NaFe)
 
 
         ax.plot(x, y, label=label, linewidth=2.0, c=c)
@@ -287,17 +290,24 @@ if __name__=='__main__':
 
     
 
-    def Na_Mg_plot(fig, ax, radial_fname, global_fname, GalName, cm=plt.get_cmap('winter')):
+    def Na_Mg_plot(fig, ax, radial_fname, global_fname, GalName, cm=plt.get_cmap('seismic'), fixed_age=14.125):
 
-        ax=index_index_map(ax, NaFep03_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.3), legend_loc='best')
-        ax=index_index_map(ax, NaFep06_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.6), legend_loc='best')
-        ax=index_index_map(ax, NaFep09_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.99), legend_loc='best')
+
+        ax=index_index_map(ax, specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.2), legend_loc='best')
+        ax=index_index_map(ax, NaFep03_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.4), legend_loc='best')
+        ax=index_index_map(ax, NaFep06_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.6), legend_loc='best')
+        ax=index_index_map(ax, NaFep09_specs, CvDinds.NaIsdss, CvDinds.MgI88, param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.8), legend_loc='best')
+
+        if GalName=='NGC~1277':
+            marker="o"
+        else:
+            marker="s"
 
         R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(radial_fname, unpack=True)
-        ax, plot=_plot_data(fig, ax, Na, Mg, Na_err, Mg_err, R, radial_cbar=True)
+        ax, plot=_plot_data(fig, ax, Na, Mg, Na_err, Mg_err, R, radial_cbar=True, marker=marker)
 
         R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(global_fname, unpack=True)
-        ax, _=_plot_data(fig, ax, Na, Mg, Na_err, Mg_err, R, radial_cbar=False)
+        ax, _=_plot_data(fig, ax, Na, Mg, Na_err, Mg_err, R, radial_cbar=False, marker=marker)
 
         ax=make_alpha_arrow(fig, ax, NaFep03_specs, 0.3, CvDinds.NaIsdss, CvDinds.MgI88, arrow_start=(1.7, 0.32), **{'fontsize':20.0})
 
@@ -305,6 +315,8 @@ if __name__=='__main__':
 
         ax.set_xlabel(r'NaI$_{SDSS}$ (\AA)')
         ax.set_ylabel(r'MgI (\AA)')
+        ax.set_xlim([0.25, 2.25])
+        ax.set_ylim([0.1, 0.9])
 
         leg = ax.legend([plot], [GalName], loc='lower right', frameon=False, numpoints=1, scatterpoints=1, fontsize=20)
 
@@ -312,27 +324,27 @@ if __name__=='__main__':
         
 #ax1=make_Z_line(fig1, ax1, NaFep03_specs,CvDinds.NaIsdss, CvDinds.MgI88, **{'ls':'dashed', 'marker':'*', 'ms':[10, 15, 20], 'c':'k', 'zorder':5})
     
-    def FeH_TiO_plot(fig, ax, radial_fname, global_fname, GalName, cm=plt.get_cmap('winter')):
+    def FeH_TiO_plot(fig, ax, radial_fname, global_fname, GalName, cm=plt.get_cmap('seismic'), fixed_age=14.125):
     
-        #ax2=index_index_map(ax2, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.0, make_grid=True, c=cm(0.3), legend_loc='best')
-        ax=index_index_map(ax, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.3), legend_loc='best')
+        #ax2=index_index_map(ax2, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.0, make_grid=True, c=cm(0.3), legend_loc='best')
+        ax=index_index_map(ax, NaFep03_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.3), legend_loc='best')
 
         
-        #ax=index_index_map(ax, NaFep06_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.0, make_grid=True, c=cm(0.6), legend_loc='best')
-        ax=index_index_map(ax, NaFep06_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.6), legend_loc='best')
+        #ax=index_index_map(ax, NaFep06_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.0, make_grid=True, c=cm(0.6), legend_loc='best')
+        ax=index_index_map(ax, NaFep06_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.6), legend_loc='best')
 
         
-        #ax=index_index_map(ax, NaFep09_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.0, make_grid=True, c=cm(0.99), legend_loc='best')
-        ax=index_index_map(ax, NaFep09_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=14.125, alpha=0.3, make_grid=True, c=cm(0.99), legend_loc='best')
+        #ax=index_index_map(ax, NaFep09_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.0, make_grid=True, c=cm(0.99), legend_loc='best')
+        ax=index_index_map(ax, NaFep09_specs, CvDinds.FeH99, CvDinds.TiO89,  param_list=plot_Zs, param_name='Z', fixed_value=fixed_age, alpha=0.3, make_grid=True, c=cm(0.99), legend_loc='best')
 
 
         
         R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(radial_fname, unpack=True)
-        ax, plot=_plot_data(fig, ax, FeH, TiO, FeH_err, TiO_err, R, radial_cbar=True)
+        ax, plot=_plot_data(fig, ax, FeH, TiO, FeH_err, TiO_err, R, radial_cbar=True, marker=marker)
 
 
         R, Na, Na_err, CaT, CaT_err, FeH, FeH_err, Mg, Mg_err, TiO, TiO_err=NGC1277_data=np.genfromtxt(global_fname, unpack=True)            
-        ax, _=_plot_data(fig, ax, FeH, TiO, FeH_err, TiO_err, R, radial_cbar=False)
+        ax, _=_plot_data(fig, ax, FeH, TiO, FeH_err, TiO_err, R, radial_cbar=False, marker=marker)
 
         ax=make_alpha_arrow(fig, ax, specs, 0.3, CvDinds.FeH99, CvDinds.TiO89, arrow_start=(0.1, 1.07), **{'fontsize':20.0})
 
@@ -351,37 +363,37 @@ if __name__=='__main__':
     plt.rc('text', usetex=True)
     plt.rc('font', family='serif')
 
-    fig1, ax1=plt.subplots(figsize=(16.5, 11.6))
-    fig2, ax2=plt.subplots(figsize=(16.5, 11.6))
+    fig1, ax1=plt.subplots(figsize=(18.5, 13.6))
+    #fig2, ax2=plt.subplots(figsize=(16.5, 11.6))
 
     N='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/NGC1277.txt'
     GN='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/GLOBAL_NGC1277.txt'
 
 
-    ax1=Na_Mg_plot(fig1, ax1, N, GN, GalName=r'NGC~1277')
-    ax2=FeH_TiO_plot(fig2, ax2, N, GN, GalName=r'NGC~1277')
+    ax1=Na_Mg_plot(fig1, ax1, N, GN, GalName=r'NGC~1277', fixed_age=14.125)
+    #ax2=FeH_TiO_plot(fig2, ax2, N, GN, GalName=r'NGC~1277')
 
-    fig1.savefig("NGC1277_NaI_Mg_MILES_index_index_map.pdf", bbox_inches='tight')
-    fig2.savefig("NGC1277_FeH_TiO_MILES_index_index_map.pdf", bbox_inches='tight')
-
-
+    fig1.savefig("/Volumes/SPV_SWIFT/LaTeX/RadialGradientsPaper/Plots/NGC1277_NaI_Mg_MILES_index_index_map.pdf", bbox_inches='tight')
+    #fig2.savefig("NGC1277_FeH_TiO_MILES_index_index_map.pdf", bbox_inches='tight')
 
 
 
 
-    fig3, ax3=plt.subplots(figsize=(16.5, 11.6))
-    fig4, ax4=plt.subplots(figsize=(16.5, 11.6))
+
+
+    fig3, ax3=plt.subplots(figsize=(18.5, 13.6))
+    #fig4, ax4=plt.subplots(figsize=(16.5, 11.6))
 
 
     I='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/IC843.txt'
     GI='/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/GLOBAL_IC843.txt'
 
 
-    ax3=Na_Mg_plot(fig3, ax3, I, GI, GalName=r'IC~843')
-    ax4=FeH_TiO_plot(fig4, ax4, I, GI, GalName=r'IC~843')
+    ax3=Na_Mg_plot(fig3, ax3, I, GI, GalName=r'IC~843', fixed_age=10.0)
+    #ax4=FeH_TiO_plot(fig4, ax4, I, GI, GalName=r'IC~843')
 
-    fig3.savefig("IC843_NaI_Mg_MILES_index_index_map.pdf", bbox_inches='tight')
-    fig4.savefig("IC843_FeH_TiO_MILES_index_index_map.pdf", bbox_inches='tight')
+    fig3.savefig("/Volumes/SPV_SWIFT/LaTeX/RadialGradientsPaper/Plots/IC843_NaI_Mg_MILES_index_index_map.pdf", bbox_inches='tight')
+    #fig4.savefig("IC843_FeH_TiO_MILES_index_index_map.pdf", bbox_inches='tight')
 
 
     """
