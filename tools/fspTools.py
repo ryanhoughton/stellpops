@@ -32,12 +32,19 @@ def lnlike_CvD(theta, parameters):
         template=make_model_CvD(theta, interp_funct, logLams[mask])
 
         temp=convolve_template_with_losvd(template, vel, sigma, velscale=velscale, vsyst=vsyst)[:len(g)]
-        poly=fit_legendre_polys(g/temp, np.ceil(len(g)/10.0))
+
+
+
+
+        morder=int(np.ceil(len(g)/10.0))
+        poly=fit_legendre_polys(g/temp, morder)
 
         # return_models[:, i]=temp*poly
         # return_gals[:, i]=g
 
-        chisq+=((g-temp*poly*p)/n)**2
+        import pdb; pdb.set_trace()
+
+        chisq+=((g-temp*poly)/n)**2
 
 
 
