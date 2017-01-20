@@ -22,6 +22,7 @@ prettyPrint = {'CN_1':r'CN$_1$', \
                'Fe5270':r'Fe$_{5270}$',\
                'Fe5335':r'Fe$_{5335}$',\
                'Fe5406':r'Fe$_{5406}$', \
+               'Fe5709':r'Fe$_{5709}$', \
                'Fe5782':r'Fe$_{5782}$', \
                'Na_D':r'Na$_{D}$',\
                'TiO_1':r'TiO$_1$',\
@@ -183,14 +184,14 @@ class ind(dict):
             for nf in xrange(self['nfeat']):
                 for istart, istop in zip(self['ind_start'], self['ind_stop']):
                     meanPos = 0.5*(istart+istop)
-                    pl.plot([meanPos*scale, meanPos*scale], [ymin,ymax*linePos], "k:")
+                    ax.plot([meanPos*scale, meanPos*scale], [ymin,ymax*linePos], "k:")
         else:
             for nf in xrange(self['nfeat']):
-                pl.fill_between([self['ind_start'][nf]*scale, self['ind_stop'][nf]*scale], \
+                ax.fill_between([self['ind_start'][nf]*scale, self['ind_stop'][nf]*scale], \
                                 [ymin,ymin], [ymax,ymax], color=indCol, alpha=alpha)
             if not noContinuua:
                 for nc in xrange(self['ncont']):
-                    pl.fill_between([self['cont_start'][nc]*scale, self['cont_stop'][nc]*scale], \
+                    ax.fill_between([self['cont_start'][nc]*scale, self['cont_stop'][nc]*scale], \
                                     [ymin,ymin], [ymax,ymax], color=contCol, alpha=alpha)
         if addLabel:
             for start,stop in zip(self['ind_start'], self['ind_stop']):
@@ -200,10 +201,10 @@ class ind(dict):
                     label=self['name']
                 xpos = np.mean([start,stop])*scale
                 ypos = labelPos*ymax
-                pl.text(xpos, ypos, label, \
+                ax.text(xpos, ypos, label, \
                         horizontalalignment='center', fontsize=labelSize)
                 if showHorizLine:
-                    pl.plot([start*scale,stop*scale], [ymax*labelPos*0.95, ymax*labelPos*0.95], "k-")
+                    ax.plot([start*scale,stop*scale], [ymax*labelPos*0.95, ymax*labelPos*0.95], "k-")
 
 
 
@@ -275,7 +276,8 @@ class indlib():
         """
         Add aditional continuua / features to an existing index
         """ 
-        print "Augmenting {} with ind: {}, {}; blue: {}, {}; red {}, {}".format(name, ind_start, ind_stop, blue_start, blue_stop, red_start, red_stop)
+        if verbose:
+            print "Augmenting {} with ind: {}, {}; blue: {}, {}; red {}, {}".format(name, ind_start, ind_stop, blue_start, blue_stop, red_start, red_stop)
         self[name].augmentIndex(ind_start=ind_start, ind_stop=ind_stop, blue_start=blue_start, blue_stop=blue_stop, red_start=red_start, red_stop=red_stop)
 
 
@@ -391,22 +393,25 @@ class indlib():
             newlib = indlib(dicts=newinds)
             return newlib
 
-    def plotIndexBands(self, scale=1.0, alpha=0.1, contCol='blue', indCol='red', \
+    def plotIndexBands(self, ax=None, scale=1.0, alpha=0.1, contCol='blue', indCol='red', \
                        xmin=0.0, xmax=1e9, ymin=-100.0, ymax=100.0, autoxy=False, noContinuua=False, \
                        addLabel=False, justLine=True, linePos=[0.75,0.8,0.85,0.9], \
-                       labelPos=[0.8,0.85,0.9,0.95], stagger=0.1, nstagger=2, \
-                       labelSize=20.0, indexList=None):
+                       labelPos=[0.2,0.25,0.2,0.35], stagger=0.1, nstagger=2, \
+                       labelSize=20.0, indexList=None, usePrettyPrint=False):
         """        Overplot the index bands, that are in the current plot range
         
         """
+
+        if ax is None:
+            fig, ax=pl.subplots()
 
         if indexList==None:
             indexList = self.names
 
         if autoxy:
             gca = pl.gca()
-            xmin, xmax = gca.get_xlim()
-            ymin, ymax = gca.get_ylim()
+            xmin, xmax = ax.get_xlim()
+            ymin, ymax = ax.get_ylim()
 
         nlabel = len(labelPos)
         nline = len(linePos)
@@ -416,10 +421,10 @@ class indlib():
             if np.any(self[name]['blue_start']*scale>xmin) & np.any(self[name]['red_stop']*scale<xmax):
                 labpos = labelPos[nindex % nlabel]
                 linpos = linePos[nindex % nlabel]
-                self[name].plotIndexBands(scale=scale, alpha=alpha, contCol='blue', indCol='red', \
+                self[name].plotIndexBands(scale=scale, ax=ax, alpha=alpha, contCol='blue', indCol='red', \
                                           ymin=ymin, ymax=ymax, autoy=False, justLine=justLine, \
                                           addLabel=addLabel, labelPos=labpos, linePos=linpos, \
-                                          labelSize=labelSize, noContinuua=noContinuua)
+                                          labelSize=labelSize, noContinuua=noContinuua, usePrettyPrint=usePrettyPrint)
                 nindex+=1
     def subset(self, indexList):
         """

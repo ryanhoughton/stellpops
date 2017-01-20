@@ -12,6 +12,7 @@ import warnings as warn
 import pdb
 from os.path import expanduser
 from nearest import nearest as nn
+from astropy.io import fits
 
 # globals
 c = 299792458.0 # m/s
@@ -572,7 +573,8 @@ class spectrum:
         lithro *= dmu/self.mu[loc] # divide by mu here as it occurs in integral - Hogg k-cor
         
         # calc mags
-        specs = np.array(self.fmu)
+        specs = np.atleast_2d(self.fmu)
+        
         fluxes = np.dot(specs[:,loc],lithro) / np.sum(lithro) # this normalisation is essentially bandpass term of K-correction
 
         # calc mag: but remember that flux in GJy (mu in GHz has no effect with trapezium integration)
@@ -580,7 +582,7 @@ class spectrum:
             mags = -2.5*np.log10(fluxes) - 48.6 - 2.5*np.log10(1e-14) - 2.5*np.log10(1.0+z) # this puts bandpass term back in (i.e. equiv to raw obs mag)
         else:
             mags = -2.5*np.log10(fluxes) - 48.6 - 2.5*np.log10(1e-14) 
-
+        
         if plot:
             loc = np.where( (self.mu > np.amin(filter.mu)*(1.0+z)) & (self.mu < np.amax(filter.mu)*(1.0+z)) )
             s = np.sum(specs, axis=0)
@@ -680,17 +682,17 @@ class spectrum:
         """
 
         sol = loadHSTSolarSpec()
-        lsun = sol.quickABmag(filter, z=z, bandcor=bandcor)
+        lsun = sol.quickABmag(filter, z=z, bandcor=bandcor, plot=True)
         msun = 1.0
         
         
-        l = self.quickABmag(filter, z=z, bandcor=bandcor)
+        l = self.quickABmag(filter, z=z, bandcor=bandcor, plot=True)
         m = self.mass
         m2l = (m/10.0**(-0.4*l)) / (msun/10.0**(-0.4*lsun))
-
+        #import pdb; pdb.set_trace()
         return m2l
 
-    def gaussLamConvolve(self, sigma_lam, nsig=5.0, overwrite=True, verbose=True):
+    def gaussLamConvolve(self, sigma_lam, nsig=5.0, overwrite=True, verbose=False):
         """
         Purpose: to convolve the spectrum with a Gaussian IN LAMBDA SPACE of known dispersion dispersion (AA)
                  NOTE: this replicates the effect of a poorer resolution spectrograph (dlam being fixed)
@@ -745,7 +747,7 @@ class spectrum:
 
         return cspec
 
-    def gaussVelConvolve(self, vel, sigma, h3h4=None, correct4InstRes=False, nsig=5.0, losvd=None, overwrite=True, verbose=True):
+    def gaussVelConvolve(self, vel, sigma, h3h4=None, correct4InstRes=False, nsig=5.0, losvd=None, overwrite=True, verbose=False):
         """
         Purpose: to convolve the spectrum with a Gaussian of known velocity (V)
                  and width (SIGMA)
@@ -1102,7 +1104,7 @@ def findfiles(path, glob='', vglob=None):
 
     return fnames, nfiles
 
-def loadMyFilters(dir="~/z/data/stellar_pops/myfilters/", file="filters.dat", \
+def loadMyFilters(dir="/Data/stellarpops/filters/", file="filters.dat", \
                   verbose=False):
 
     """
@@ -1299,7 +1301,7 @@ def load2MASSFilters(dir="~/z/data/stellar_pops/myfilters/2mass/"):
 
     return specs
 
-def loadHSTFilters(dir="~/z/data/stellar_pops/myfilters/hst/", file="filter_HST.res"):
+def loadHSTFilters(dir="/Data/stellarpops/HSTcals/", file="filter_HST.res"):
     """
 
     RH 3/10/13
@@ -1407,7 +1409,7 @@ def calcKcorAB(spec, redshift, filter1, filter2=None, quick=False, bandcor=True)
     return mag_z - mag_0 # return the standard colour (blue-red)
 
 
-def loadHSTSolarSpec(dir="~/z/data/stellar_pops/HSTcals/", file="sun_reference_stis_001.ascii"):
+def loadHSTSolarSpec(dir="/Data/stellarpops/HSTcals", file="sun_reference_stis_002.fits"):
     """
     Author: Ryan Houghton 24/5/2011
     Purpose: Read in the HST calibration solar spectrum (http://www.stsci.edu/hst/observatory/cdbs/calspec.html)
@@ -1422,7 +1424,14 @@ def loadHSTSolarSpec(dir="~/z/data/stellar_pops/HSTcals/", file="sun_reference_s
 
     
 
-    lam, flux = np.loadtxt(expanduser(dir)+"/"+file, unpack=True)
+    #lam, flux = np.loadtxt(expanduser(dir)+"/"+file, unpack=True)
+    filename='{}/{}'.format(dir, file)
+    hdu=fits.open(filename)
+    data=hdu[1].data
+
+
+    flux=data['FLUX']
+    lam=data['WAVELENGTH']
 
     AbsFlux = flux * (d_sun/10.0/pc)**2.0
 
@@ -1624,7 +1633,17 @@ def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot
     else:
         meanWave = np.mean(np.array([index['blue_start'],index['red_stop']]))
 
-    d1, d2, d3=longSpec.flam.shape
+    if longSpec.flam.ndim==3:
+        d1, d2, d_wave=longSpec.flam.shape
+    elif longSpec.flam.ndim==2:
+        d1, d_wave=longSpec.flam.shape
+        d2=1
+    elif longSpec.flam.ndim==1:
+        d_wave=longSpec.flam.shape
+        d1=1
+        d2=1
+    else:
+        raise TypeError('Code not yet written for shapes greater than 3xNlam')
 
 
     """
@@ -1650,10 +1669,15 @@ def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot
     assert len(cloc)!=0, "Found no matching wavelengths"
     clam  = longSpec.lam[cloc]
     cflam=np.empty((d1*d2, len(clam)))
-    for j, spec in enumerate(longSpec.flam.reshape(-1, d3)):
+    for j, spec in enumerate(longSpec.flam.reshape(-1, d_wave)):
         cflam[j, :]=spec[cloc]
 
-    cflam=cflam.reshape(d1, d2, len(clam))
+    if longSpec.flam.ndim==3:
+        cflam=cflam.reshape(d1, d2, len(clam))
+    elif longSpec.flam.ndim==2:
+        cflam=cflam.reshape(d1, len(clam))
+
+
 
     cutSpec = spectrum(lam=clam, lamspec=cflam, wavesyst=longSpec.wavesyst)
     
@@ -1728,6 +1752,7 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         EindVals = []
 
     original_flam_shape=spectrum.flam.shape
+    #Reshape the array to be a 2D array with flam as the last axis
     spectrum.flam=spectrum.flam.reshape(-1, spectrum.flam.shape[-1])
     for ns in xrange(spectrum.flam.shape[0]):
 
@@ -1736,6 +1761,7 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         xAv=[]
         if calcVar:
             VyAv = [] # init variance array
+
         assert index['ncont']==2, "Can't calculate simple index when More than 2 continuum regions defined."
         for j in xrange(index['ncont']):
             # Find first and last data indices within bandpass
@@ -1817,8 +1843,8 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         contNormSubSpec = 1.0 - spectrum.flam[ns][a:b+1] / Fi
         contNormSubSpec[0] *= Cstart_c
         contNormSubSpec[-1] *= Cend_c
-        index = disp*np.sum(contNormSubSpec)
-        indVals.append(index)
+        index_value = disp*np.sum(contNormSubSpec)
+        indVals.append(index_value)
 
         if calcVar:
             # calc error on index, folding in uncertainty on continuum (ignoring covariances)
@@ -1836,8 +1862,15 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
         rlist.append(EindVals)
 
     spectrum.flam=spectrum.flam.reshape(original_flam_shape)
+
+    if spectrum.flam.ndim==3:
+        final_array=np.array(indVals).reshape((original_flam_shape[0], original_flam_shape[1]))
+    elif spectrum.flam.ndim==2:
+        final_array=np.array(indVals).reshape((original_flam_shape[0]))
+    else:
+        final_array=indvals
         
-    return np.array(indVals).reshape((original_flam_shape[0], original_flam_shape[1]))
+    return final_array
 
 
 def checkSpacing(spectrum, index, round_prec=10):
@@ -1883,7 +1916,7 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
 
     # loop over spectra and calc indices
     original_flam_shape=spectrum.flam.shape
-    spectrum.flam=spectrum.flam.reshape(-1, spectrum.flam.shape[-1]).tolist()
+    spectrum.flam=spectrum.flam.reshape(-1, spectrum.flam.shape[-1])
 
     indices = np.zeros(len(spectrum.flam),dtype=float)
     index_vars = np.zeros_like(indices)
@@ -2092,13 +2125,19 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
         indices[spec] = ind
         index_vars[spec] = ind_var_tot
 
-    indices=indices.reshape((original_flam_shape[0], original_flam_shape[1]))
+    spectrum.flam=spectrum.flam.reshape(original_flam_shape)
+    
+    if spectrum.flam.ndim==3:
+        indices=indices.reshape((original_flam_shape[0], original_flam_shape[1]))
+    elif spectrum.flam.ndim==2:
+        indices=indices.reshape((original_flam_shape[0]))
+
 
     rlist = indices
     if var_SED is not None:
         rlist = [indices, np.sqrt(index_vars)]
 
-    spectrum.flam=np.array(spectrum.flam).reshape(original_flam_shape)
+    
 
     return rlist 
 
