@@ -24,7 +24,7 @@ def _CvD_measure_all_indices(base_spectra, var_elem_spectra, indices, sigma, cor
 
     #Load the element lists and steps from the settings file
     elem_steps, Na_elem_steps, positive_only_elem_steps=settings.get_steps()
-    normal_elems, Na_elem, positive_only_elems=steps.get_elem_lists()    
+    normal_elems, Na_elem, positive_only_elems=settings.get_elem_lists()    
 
     elem_param_dict=CT.CD16_get_np_indices_for_elems()
     base_param_dict=CT.CD16_get_np_indices_for_params()

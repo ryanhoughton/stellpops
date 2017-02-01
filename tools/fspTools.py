@@ -3,18 +3,26 @@ import scipy.constants as const
 import ppxf_util as util
 from astropy.io import fits
 import scipy.interpolate as si
+from stellarpops.tools import CD12tools as CT
 
 
-c = 299792.458
+c_light = 299792.458
 ################################################################################################################################################################
 def lnlike_CvD(theta, parameters):
 
-    galaxy, noise, velscale, goodpixels, vsyst, interp_funct, logLams=parameters
+    galaxy, noise, velscale, goodpixels, vsyst, interp_funct, correction_interps, logLams=parameters
 
     # galaxy=galaxy[goodpixels]
     # noise=noise[goodpixels]
 
-    vel, sigma, age, Z, imf=theta
+    general_interp, na_interp, positive_only_interp=correction_interps
+
+    vel, sigma=theta[0], theta[1]
+
+    Na_abundance=theta[2]
+    general_abundances=theta[3:10]
+    positive_abundances=theta[10:19]
+    age, Z, imf=theta[19:]
 
     fit_ranges=np.array([[4000, 4700], [4700, 5500], [8000, 8920], [9630, 10150]])*(np.exp(vel/c))
 
@@ -23,30 +31,40 @@ def lnlike_CvD(theta, parameters):
 
     chisq=0
 
-    for i, fit_range in enumerate(fit_ranges):
+    #for i, fit_range in enumerate(fit_ranges):
 
-        mask=np.where((np.exp(logLams)>fit_range[0]) & (np.exp(logLams)<fit_range[1]))
-        g=galaxy[mask]
-        n=noise[mask]
+        #mask=np.where((np.exp(logLams)>fit_range[0]) & (np.exp(logLams)<fit_range[1]))
+    mask=np.arange(len(galaxy))
+    g=galaxy[mask]
+    n=noise[mask]
 
-        template=make_model_CvD(theta, interp_funct, logLams[mask])
-
-        correction=
-
-        temp=convolve_template_with_losvd(template, vel, sigma, velscale=velscale, vsyst=vsyst)[:len(g)]
+    template=make_model_CvD(theta, interp_funct, logLams[mask])
 
 
+    
+    general_correction=get_correction(general_interp, logLams[mask], np.arange(len(general_abundances)), general_abundances, age, Z)
+    positive_only_correction=get_correction(positive_only_interp, logLams[mask], np.arange(len(positive_abundances)), positive_abundances, age, Z)
+    na_correction=na_interp((Na_abundance, age, Z, logLams[mask]))
 
 
-        morder=int(np.ceil(len(g)/10.0))
-        poly=fit_legendre_polys(g/temp, morder)
+    template=template*general_correction*positive_only_correction*na_correction
 
-        # return_models[:, i]=temp*poly
-        # return_gals[:, i]=g
+    temp=convolve_template_with_losvd(template, vel, sigma, velscale=velscale, vsyst=vsyst)[:len(g)]
 
-        import pdb; pdb.set_trace()
 
-        chisq+=((g-temp*poly)/n)**2
+
+
+    morder=int(np.ceil(len(g)/10.0))
+    poly=fit_legendre_polys(g/temp, morder)
+
+    # return_models[:, i]=temp*poly
+    # return_gals[:, i]=g
+    
+    
+
+
+    chisq=np.sum(((g-temp*poly)/n)**2)
+
 
 
 
@@ -66,48 +84,56 @@ def lnprob_CvD(theta, parameters):
 
 def lnprior_CvD(theta):
 
-    vel, sigma, age, Z, imf=theta
+    Na_abundance=theta[2]
+    general_abundances=theta[3:10]
+    positive_abundances=theta[10:19]
+    age, Z, imf=theta[19:]
 
-    if 1.0 < age < 13.5 and -1.50 < Z < 0.20 and 0.0 < imf < 3.5 and 0.0 < vel <10000.0 and 0.0 < sigma < 1000.0:
+    if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age < 13.0 and -1.5 < Z < 0.4 and 0.0 < imf <3.5:
         return 0.0
     return -np.inf
 
 
 
+
 def make_model_CvD(theta, interp_funct, logLams):
 
-    _, _, age, Z, imf=theta
+    Na_abundance=theta[2]
+    general_abundances=theta[3:10]
+    positive_abundances=theta[10:19]
+    age, Z, imf=theta[19:]
 
     model=interp_funct((logLams, age, Z, imf))
 
     return model
 
 
-def get_correction(interpolator, inds, elems, abunds, age, Z, imf):
+def get_correction(interpolator, logLams, elems, abunds, age, Z):
 
     #The interpolator expects a list of 6 numbers. Meshgrid the two arrays which are of different lengths
     # (the indices and the number of elements to enhance) and then create lists of ages, Zs and IMFs of the correct
     # shapes. Then do the same for the abundances. Stack together and pass to the interpolator object!
 
-    points = np.meshgrid(inds, elems, indexing='ij')
+    points = np.meshgrid(elems, logLams, indexing='ij')
     flat = np.array([m.flatten() for m in points])
     #flat is now an array of points of shape 2, len(indices)*len(elems)
     #make arrays of the other variables of length len(indices)*len(elems)
     ages=np.ones_like(points[0])*age
     Zs=np.ones_like(points[0])*Z
-    imfs=np.ones_like(points[0])*imf
+    
 
     #Get the correct abundance for each element- luckily we can index the abundance array by the integer element array
-    abunds=abunds[points[1]]
+    abunds=abunds[points[0]]
 
     #Stack together
-    xi=np.vstack((flat, abunds.ravel(), ages.ravel(), Zs.ravel(), imfs.ravel()))
+    xi=np.vstack((flat[0, :], abunds.ravel(), ages.ravel(), Zs.ravel(), flat[1, :]))
     #Do the interpolation
     out_array = interpolator(xi.T)
     #reshape everything to be (len(indices), len(elements))
     result = out_array.reshape(*points[0].shape)
 
-    return result
+    return np.prod(result, axis=0)
+
 
 
 ################################################################################################################################################################
@@ -323,8 +349,10 @@ def interpolate_Miles_ML(IMF_type='bi', dir_name='/Data/stellarpops/Miles/Mass_f
 ################################################################################################################################################################
 def prepare_CvD2_templates(templates_lam_range, velscale, verbose=True):
     import glob
+    import os
+    template_glob=os.path.expanduser('~/z/Data/stellarpops/CvD2/vcj_models/VCJ_*.s100')
 
-    vcj_models=sorted(glob.glob('/Data/stellarpops/CvD2/vcj_models/VCJ_*.s100'))
+    vcj_models=sorted(glob.glob(template_glob))
     temp_lamdas, x35, x3, x23, kroupa, flat=np.genfromtxt(vcj_models[0], unpack=True)
 
     n_ages=7
@@ -346,7 +374,7 @@ def prepare_CvD2_templates(templates_lam_range, velscale, verbose=True):
 
     for a, Z in enumerate(Zs):    
         for b, age in enumerate(ages):
-            model=glob.glob('/Data/stellarpops/CvD2/vcj_models/VCJ_*{}*{}.ssp.s100'.format(Z, age))[0]
+            model=glob.glob(os.path.expanduser('~/z/Data/stellarpops/CvD2/vcj_models/VCJ_*{}*{}.ssp.s100'.format(Z, age)))[0]
             print 'Loading {}'.format(model)
             data=np.genfromtxt(model)
 
@@ -357,6 +385,133 @@ def prepare_CvD2_templates(templates_lam_range, velscale, verbose=True):
                 templates[:, b, a, c]=sspNew/np.median(sspNew)
 
     return templates, logLam_template
+
+
+def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
+
+    import glob
+
+    import os
+    template_glob=os.path.expanduser('/Data/stellarpops/CvD2/vcj_models/VCJ_*.s100')
+
+    var_elem_spectra=CT.load_varelem_CvD16ssps(dirname='~/z/Data/stellarpops/CvD2', folder='atlas_rfn_v3', imf='kroupa')
+
+    ages=var_elem_spectra['Solar'].age[:, 0]
+    Zs=var_elem_spectra['Solar'].Z[0, :]
+    n_ages=len(ages)
+    n_Zs=len(Zs)
+
+    temp_lamdas=var_elem_spectra['Solar'].lam
+
+    t_mask = ((temp_lamdas > templates_lam_range[0]) & (temp_lamdas <templates_lam_range[1]))
+
+    positive_only_elems=['Cr+', 'Ni+', 'Co+', 'Eu+', 'Sr+', 'K+', 'V+', 'Cu+', 'as/Fe+']
+    Na_elem=['Na']
+    normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+
+    elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.45]
+    Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
+
+
+    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, var_elem_spectra['Solar'].flam[-1, -1, t_mask], velscale=velscale)
+
+    print 'SSP New is {}'.format(len(sspNew))
+
+    positive_only_templates=np.empty((len(positive_only_elems), len(positive_only_elem_steps), n_ages, n_Zs, len(sspNew)))
+    general_templates=np.empty((len(normal_elems), len(elem_steps), n_ages, n_Zs, len(sspNew)))
+    
+    na_templates=np.empty((len(Na_elem_steps), n_ages, n_Zs, len(sspNew)))
+
+
+
+
+
+
+
+
+
+    print 'Making the Positive-Only corection templates'
+    #Do the positve only correction templates:
+    for a, elem in enumerate(positive_only_elems):
+        print elem
+        for b, step in enumerate(positive_only_elem_steps):
+            for c, _ in enumerate(ages):
+                for d, _ in enumerate(Zs):
+
+                    if step !=0.0:
+                        data=(var_elem_spectra[elem].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+                    else:
+                        data=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                            
+                    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
+
+                    positive_only_templates[a, b, c, d, :]=sspNew/np.median(sspNew)
+
+
+    #Do the general templates
+    for a, elem in enumerate(normal_elems):
+        print elem
+        for b, step in enumerate(elem_steps):
+            for c, _ in enumerate(ages):
+                for d, _ in enumerate(Zs):
+
+                    if step>0.0:
+                        e='{}+'.format(elem)
+                    elif step<0.0:
+                        e='{}-'.format(elem)
+                        step=np.abs(step)
+
+                    if step !=0.0:
+                        data=(var_elem_spectra[e].flam[c, d, t_mask]/var_elem_spectra['Solar'].flam[c, d, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+                    else:
+                        data=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+
+
+                            
+                    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
+
+                    general_templates[a, b, c, d, :]=sspNew/np.median(sspNew)
+
+
+
+    #Do the Na templates:
+    print 'Na'
+    for a, step in enumerate(Na_elem_steps):
+        for b, _ in enumerate(ages):
+            for c, _ in enumerate(Zs):
+                
+                if step <0.0:
+                    e='Na-'
+                    base_enhancement=0.3
+                    step=np.abs(step)                    
+                elif 0.0<=step<0.45:
+                    e='Na+'
+                    base_enhancement=0.3
+                elif 0.45<=step<0.75:
+                    e='Na+0.6'
+                    base_enhancement=0.6
+                elif 0.75<=step<1.0:
+                    e='Na+0.9'
+                    base_enhancement=0.9
+
+
+                if step !=0.0:
+                    data=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(base_enhancement)-1.0))
+                else:
+
+                    data=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                    
+                sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
+
+                na_templates[a, b, c, :]=sspNew/np.median(sspNew)
+
+
+
+    return [general_templates, na_templates, positive_only_templates], logLam_template
+
+
+
 ################################################################################################################################################################  
 
 ################################################################################################################################################################
@@ -364,9 +519,9 @@ def prepare_CvD_interpolator(templates_lam_range, velscale, verbose=True):
 
     templates, logLam_template=prepare_CvD2_templates(templates_lam_range, velscale, verbose=verbose)
 
-    ages=[1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.5]
+    ages=[  1.,   3.,   5.,  7., 9.,  11.0, 13.5]
     Zs=[-1.5, -1.0, -0.5, 0.0, 0.2]
-    imfs=[0.0, 1.0, 2.3, 3.0, 3.5]
+    imfs=[0.0, 1.8, 2.3, 3.0, 3.5]
 
 
     linear_interp=si.RegularGridInterpolator(((logLam_template, ages, Zs, imfs)), templates)
@@ -374,6 +529,36 @@ def prepare_CvD_interpolator(templates_lam_range, velscale, verbose=True):
     return linear_interp, logLam_template
 
 ################################################################################################################################################################
+
+################################################################################################################################################################
+def prepare_CvD_correction_interpolators(templates_lam_range, velscale, verbose=True):
+
+    all_corrections, logLam_template=prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=verbose)
+
+    general_templates, na_templates, positive_only_templates=all_corrections
+
+    ages=np.array([  1.,   3.,   5.,   9.,  13.])
+    Zs=[-1.5, -1.0, -0.5, 0.0, 0.2]
+    positive_only_elems=['Cr+', 'Ni+', 'Co+', 'Eu+', 'Sr+', 'K+', 'V+', 'Cu+', 'as/Fe+']
+    Na_elem=['Na']
+    normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+
+    elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.45]
+    Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
+    positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
+
+
+    general_interp=si.RegularGridInterpolator(((np.arange(len(normal_elems)), elem_steps, ages, Zs, logLam_template)), general_templates)
+    na_interp=si.RegularGridInterpolator(((Na_elem_steps, ages, Zs, logLam_template)), na_templates)
+    positive_only_interp=si.RegularGridInterpolator(((np.arange(len(positive_only_elems)), positive_only_elem_steps, ages, Zs, logLam_template)), positive_only_templates)
+
+    correction_interps=[general_interp, na_interp, positive_only_interp]
+
+    return correction_interps, logLam_template
+
+################################################################################################################################################################
+
+
 
 ################################################################################################################################################################
 def prepare_Miles_templates(templates_lam_range, velscale, template_dictionary=None, NaFe=0.0, imf_type='uni', verbose=True):
@@ -422,11 +607,14 @@ def prepare_Miles_templates(templates_lam_range, velscale, template_dictionary=N
 ################################################################################################################################################################
 
 
-def NGC1277_CVD_read_in_data_CvD(file = 'Data/n1277b_cen.dat', c=299792.458):
+def NGC1277_CVD_read_in_data_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.dat', c=299792.458):
     ##############################################################################################################################################################
 
     # Read in the central spectrum from CvD
     #
+
+    import os
+    file=os.path.expanduser(file)
     lamdas, flux, errors, CvD_weights, inst_res=np.genfromtxt(file, unpack=True)
     #Redshift of NGC1277, used to get the initial velocity
     z=0.017044
@@ -507,7 +695,7 @@ def NGC1277_SWIFT_read_in_data(file='Data/SPV_NGC1277.dat'):
     return galaxy, noise, velscale, goodpixels, lam_range_gal, logLam
 
 
-def NGC1277_CVD_read_in_data_MILES(file = 'Data/n1277b_cen.dat', c=299792.458):
+def NGC1277_CVD_read_in_data_MILES(file = 'Data/n1277b_cen.dat', c_light=299792.458):
     ##############################################################################################################################################################
 
     # Read in the central spectrum from CvD
@@ -613,33 +801,34 @@ def NGC1277_CvD_set_up_emcee_parameters_MILES(file = 'n1277b_cen.dat', verbose=T
     
      # speed of light in km/s
 
-    galaxy, noise, velscale, goodpixels, lam_range_gal, logLam=NGC1277_CVD_read_in_data_MILES(file=file, c=c)
+    galaxy, noise, velscale, goodpixels, lam_range_gal, logLam=NGC1277_CVD_read_in_data_MILES(file=file, c=c_light)
 
     linear_interp, logLam_template, lam_range_temp=read_in_templates(lam_range_gal, velscale, pad=500.0, verbose=verbose)
 
-    dv = c*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
+    dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
 
     return [galaxy, noise, velscale, goodpixels, dv, linear_interp, logLam_template], logLam
 
 
-def NGC1277_CvD_set_up_emcee_parameters_CvD(file = 'n1277b_cen.dat', verbose=True):
+def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.dat', verbose=True):
 
     
     
 
-    galaxy, noise, velscale, goodpixels, lam_range_gal, logLam=NGC1277_CVD_read_in_data_CvD(file=file, c=c)
+    galaxy, noise, velscale, goodpixels, lam_range_gal, logLam=NGC1277_CVD_read_in_data_CvD(file=file, c=c_light)
 
 
     pad=500.0
     lam_range_temp = [lam_range_gal[0]-pad, lam_range_gal[1]+pad]
     linear_interp, logLam_template, =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
+    correction_interps, _=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
 
 
-    dv = c*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
+    dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, logLam_template], logLam
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template], logLam
 
 
 ################################################################################
