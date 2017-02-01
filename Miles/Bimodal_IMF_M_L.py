@@ -127,7 +127,7 @@ if corrections==True:
     ages = np.array([4.0, 10.0, 13.5, 13.5, 13.5, 12.0, 13.5, 10.0])
     alphas = np.array([0.0, 0.2, 0.25, 0.25, 0.25, 0.25, 0.3, 0.3])
     fes = np.array([0.0, 0.1, 0.25, 0.02, 0.07, -0.05, 0.021, 0.021])
-    nas = np.array([0.0, 0.3, 0.8, 0.1, 0.4, 0.1, 0.4, 0.1])
+    nas = np.array([0.0, 0.3, 0.8, 0.1, 0.4, 0.1, 0.4, 0.2])
     Z_vals=fes+0.93*alphas
     resols = np.array([150.0, 200.0, 400.0, 269.0, 271.0, 185.0, 200.0, 200.0])
     plresols = np.array([65.0, 180.0, 380.0, 267.0, 278.0, 170.0, 410.0, 265.0])
@@ -144,7 +144,7 @@ else:
     #savefilename="/Volumes/SPV_SWIFT/LaTeX/RadialGradientsPaper/Plots/IMF_Sigma_plot_WITHOUT_response_functs.pdf"
 
 
-savefilename="Bimodal_IMF_Sigma_plot_with_arrows.pdf"
+savefilename="test.pdf"
 
 
 
@@ -177,49 +177,6 @@ for i, (age, alpha, Z, fe, na, sigma, feh, feh_var, central_sigma, galname) in e
 
 
 
-#Make the NGC1277 and IC843 systematic error box
-#NGC1277 no response functions
-"""
-NGC1277_no_response, _, _, _=IMFtools.find_IMF_slope(age=13.5, alpha=0.0, Fe=0.0, Na=0.0, sigma=200.0, FeH=NGC1277_FeH, FeH_var=NGC1277_FeH_var, central_sigma=410.0, GalName='NGC1277')
-
-NGC1277_with_alpha, _, _, _=IMFtools.find_IMF_slope(age=13.5, alpha=0.3, Fe=0.0, Na=0.0, sigma=200.0, FeH=NGC1277_FeH, FeH_var=NGC1277_FeH_var, central_sigma=410.0, GalName='NGC1277')
-NGC1277_with_na, _, _, _=IMFtools.find_IMF_slope(age=13.5, alpha=0.0, Fe=0.0, Na=0.4, sigma=200.0, FeH=NGC1277_FeH, FeH_var=NGC1277_FeH_var, central_sigma=410.0, GalName='NGC1277')
-NGC1277_with_fe, _, _, _=IMFtools.find_IMF_slope(age=13.5, alpha=0.0, Fe=0.021, Na=0.0, sigma=200.0, FeH=NGC1277_FeH, FeH_var=NGC1277_FeH_var, central_sigma=410.0, GalName='NGC1277')
-
-NGC1277_with_response, _, _, _=IMFtools.find_IMF_slope(age=13.5, alpha=0.3, Fe=0.021, Na=0.4, sigma=200.0, FeH=NGC1277_FeH, FeH_var=NGC1277_FeH_var, central_sigma=410.0, GalName='NGC1277')
-
-
-
-IC843_no_response, _, _, _=IMFtools.find_IMF_slope(age=10.0, alpha=0.0, Fe=0.0, Na=0.0, sigma=200.0, FeH=IC843_FeH, FeH_var=IC843_FeH_var, central_sigma=265.0, GalName='IC843')
-
-IC843_with_alpha, _, _, _=IMFtools.find_IMF_slope(age=10.0, alpha=0.3, Fe=0.0, Na=0.0, sigma=200.0, FeH=IC843_FeH, FeH_var=IC843_FeH_var, central_sigma=265.0, GalName='IC843')
-IC843_with_na, _, _, _=IMFtools.find_IMF_slope(age=10.0, alpha=0.0, Fe=0.0, Na=0.1, sigma=200.0, FeH=IC843_FeH, FeH_var=IC843_FeH_var, central_sigma=265.0, GalName='IC843')
-IC843_with_fe, _, _, _=IMFtools.find_IMF_slope(age=10.0, alpha=0.0, Fe=0.021, Na=0.0, sigma=200.0, FeH=IC843_FeH, FeH_var=IC843_FeH_var, central_sigma=265.0, GalName='IC843')
-
-IC843_with_response, _, _, _=IMFtools.find_IMF_slope(age=10.0, alpha=0.3, Fe=0.021, Na=0.01, sigma=200.0, FeH=IC843_FeH, FeH_var=IC843_FeH_var, central_sigma=265.0, GalName='IC843')
-
-
-
-width=8.0
-x_lefts=np.array([410-width/2.0, 265-width/2.0])
-y_lefts=np.array([NGC1277_no_response, IC843_no_response])
-widths=np.array([width, width])
-heights=np.array([NGC1277_with_response-NGC1277_no_response, IC843_with_response-IC843_no_response])
-
-
-boxes=makeErrorBoxes(x_lefts,y_lefts, widths, heights,fc='b',ec='None',alpha=0.45)
-"""
-
-
-
-#IMF - sigma relations from literature: LB13, F13, S14
-sigs = np.arange(100.0, 330.0, 10.0)
-lb13 = 3.4*np.log10(sigs/200.0) + 2.3
-f13 = 4.87*np.log10(sigs/200.0) + 2.33
-s14 = 2.3*np.log10(sigs/200.0) + 2.1
-
-
-#Plot IMF v sigma
 
 plt.rc('text', usetex=True)
 plt.rc('font', family='serif')
@@ -275,7 +232,6 @@ ax.set_ylim([0.3, 3.5])
 
 ax.plot([50.,450.], [1.3,1.3], 'k--', lw=1.5)
 #ax.plot([50.0,450.0], [2.35, 2.35], 'k--', lw=1.5)
-ax.annotate('Chabrier', xy=(325,1.3),xycoords='data',xytext=(0,5),textcoords='offset points', color='k', fontsize=gensize)
 #ax.annotate('Salpeter', xy=(325,2.35),xycoords='data',xytext=(0,5),textcoords='offset points', color='k', fontsize=gensize)
 for i in xrange(len(gals)):
     if gals[i] == 'NGC4873' or gals[i] == 'IC843' or gals[i] == 'NGC4889':

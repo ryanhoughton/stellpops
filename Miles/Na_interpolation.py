@@ -146,7 +146,7 @@ def Na_enhancement_wrapper(galname, all_spectra, sigma, age, alpha, Z, Na, Na_er
 if __name__=='__main__':
 
 
-    #all_spectra=get_all_specs()
+    all_spectra=get_all_specs()
 
 
     NGC1277_Na, NGC1277_Na_err=np.genfromtxt('/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/NGC1277.txt').T[1], np.genfromtxt('/Volumes/SPV_SWIFT/Science/Resolved_Gals_indices/Index_Index_Plots/NGC1277.txt').T[2]

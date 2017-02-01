@@ -31,6 +31,8 @@ def lnlike_CvD(theta, parameters):
 
         template=make_model_CvD(theta, interp_funct, logLams[mask])
 
+        correction=
+
         temp=convolve_template_with_losvd(template, vel, sigma, velscale=velscale, vsyst=vsyst)[:len(g)]
 
 
@@ -79,6 +81,34 @@ def make_model_CvD(theta, interp_funct, logLams):
     model=interp_funct((logLams, age, Z, imf))
 
     return model
+
+
+def get_correction(interpolator, inds, elems, abunds, age, Z, imf):
+
+    #The interpolator expects a list of 6 numbers. Meshgrid the two arrays which are of different lengths
+    # (the indices and the number of elements to enhance) and then create lists of ages, Zs and IMFs of the correct
+    # shapes. Then do the same for the abundances. Stack together and pass to the interpolator object!
+
+    points = np.meshgrid(inds, elems, indexing='ij')
+    flat = np.array([m.flatten() for m in points])
+    #flat is now an array of points of shape 2, len(indices)*len(elems)
+    #make arrays of the other variables of length len(indices)*len(elems)
+    ages=np.ones_like(points[0])*age
+    Zs=np.ones_like(points[0])*Z
+    imfs=np.ones_like(points[0])*imf
+
+    #Get the correct abundance for each element- luckily we can index the abundance array by the integer element array
+    abunds=abunds[points[1]]
+
+    #Stack together
+    xi=np.vstack((flat, abunds.ravel(), ages.ravel(), Zs.ravel(), imfs.ravel()))
+    #Do the interpolation
+    out_array = interpolator(xi.T)
+    #reshape everything to be (len(indices), len(elements))
+    result = out_array.reshape(*points[0].shape)
+
+    return result
+
 
 ################################################################################################################################################################
 
