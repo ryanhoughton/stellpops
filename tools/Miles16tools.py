@@ -9,16 +9,16 @@ import pandas as pd
 
 import glob
 
-basedir='/Data/stellarpops/Miles/base_set'
+#basedir='/Data/stellarpops/Miles/base_set'
 
 
-def get_all_specs(imf_type):
+def get_all_specs(imf_type, verbose=True):
 
-    specs=load_eMILES_spectra(NaFe=0.0, imf_type=imf_type)
+    specs=load_eMILES_spectra(NaFe=0.0, imf_type=imf_type, verbose=verbose)
 
-    NaFep03_specs=load_eMILES_spectra(NaFe=0.3)
-    NaFep06_specs=load_eMILES_spectra(NaFe=0.6)
-    NaFep09_specs=load_eMILES_spectra(NaFe=0.9)
+    NaFep03_specs=load_eMILES_spectra(NaFe=0.3, verbose=verbose)
+    NaFep06_specs=load_eMILES_spectra(NaFe=0.6, verbose=verbose)
+    NaFep09_specs=load_eMILES_spectra(NaFe=0.9, verbose=verbose)
 
     return specs, NaFep03_specs, NaFep06_specs, NaFep09_specs
 
@@ -89,6 +89,9 @@ def load_eMILES_spectra(basedir='/Data/stellarpops/Miles', NaFe=0.0, Zs=None, ve
     spectra['bi1.30'].flam
 
     """
+
+    import os
+    basedir=os.path.expanduser(basedir)
     if imf_type=='bi':
         if NaFe==0.0:
             folder='bi_base_set'

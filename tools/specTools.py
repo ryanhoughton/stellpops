@@ -1550,14 +1550,14 @@ def air2vac(wave_air, useIDLcoef=True, verbose=False):
         wave_vac[g] = wave_air[g]*fact      # Convert Wavelength
     return wave_vac
 
-def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=5.0, verbose=True):
+def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=10.0, verbose=True):
     """
     RH 18/10/2016
 
     In order to measure Lick/IDS indices, we need to convolve the spectra up to a particular resolution
     and measure the index strength.
 
-    This code cuts out a part of the spectrum (red and blue continuum limits +- 5 sigma) and convolves
+    This code cuts out a part of the spectrum (red and blue continuum limits +- 10 sigma) and convolves
     the spectrum with the given dispersion. It then returns this new, shorter, convolved spectrum.
 
     Puzia et al 2004 Eq in Sec4.1 is useful
@@ -1604,7 +1604,7 @@ def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=5
     return cutSpec
 
 
-def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot=False, verbose=True, n_sig=5.0):
+def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot=False, verbose=True, n_sig=10.0, fix_uneven_lamdas=False):
     """
     RH 18/10/2016
 
@@ -1677,13 +1677,15 @@ def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot
     elif longSpec.flam.ndim==2:
         cflam=cflam.reshape(d1, len(clam))
 
-
+    if fix_uneven_lamdas is True:
+        clam=np.linspace(clam[0], clam[-1], len(clam))
 
     cutSpec = spectrum(lam=clam, lamspec=cflam, wavesyst=longSpec.wavesyst)
     
     # convolve
     #conv_sigma = kernelSigma/meanWave*c/1e3
-    cutSpec.gaussVelConvolve(0.0, conv_sigma, correct4InstRes=False, overwrite=True, verbose=verbose)
+    if conv_sigma>0.0:
+        cutSpec.gaussVelConvolve(0.0, conv_sigma, correct4InstRes=False, overwrite=True, verbose=verbose)
 
     # do plot if asked
     if doPlot:
@@ -1708,7 +1710,7 @@ def cutAndGaussVelConvolve(longSpec, index, conv_sigma, currentFWHM=None, doPlot
     return cutSpec
     
 
-def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10, \
+def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=8, \
                     continIncludesPartialPix=True, doPlot=False, verbose=False):
     """
     RH 18/10/2016
@@ -1873,7 +1875,7 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=10
     return final_array
 
 
-def checkSpacing(spectrum, index, round_prec=10):
+def checkSpacing(spectrum, index, round_prec=6):
     """
     Check for uniform wavelength spacing. Code taken from SZ's index calculator
     """
@@ -1884,12 +1886,67 @@ def checkSpacing(spectrum, index, round_prec=10):
     data_stop = data_loc_stop[data_loc_stop.argmax()]
     deltas = np.round(spectrum.lam[data_start+1:data_stop]-spectrum.lam[data_start:data_stop-1],round_prec)
     delta = np.median(deltas)
+
     
     assert np.all(deltas==delta), "Wavelength spacing not uniform"
     return delta
 
 
-def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
+def clip_spec_measure_index(longSpec, index, indextype='Cenarro', clip_length=100, fix_uneven_lamdas=True):
+
+    # define cut spectrum edges
+    #conv_sigma = kernelSigma/meanWave*c/1e3 so kernalSigma=conv_sigma*meanWave*1e3/c
+    cutlow = (index['blue_start'] - 100.0)
+    cuthigh= (index['red_stop']   + 100.0)
+
+    if longSpec.flam.ndim==3:
+        d1, d2, d_wave=longSpec.flam.shape
+    elif longSpec.flam.ndim==2:
+        d1, d_wave=longSpec.flam.shape
+        d2=1
+    elif longSpec.flam.ndim==1:
+        d_wave=longSpec.flam.shape
+        d1=1
+        d2=1
+    else:
+        raise TypeError('Code not yet written for shapes greater than 3xNlam')
+
+    # cut spec
+    cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
+    assert len(cloc)!=0, "Found no matching wavelengths"
+    clam  = longSpec.lam[cloc]
+    cflam=np.empty((d1*d2, len(clam)))
+    for j, spec in enumerate(longSpec.flam.reshape(-1, d_wave)):
+        cflam[j, :]=spec[cloc]
+
+    if longSpec.eflam is not None: #hasattr(spectrum, 'eflam'):
+        ceflam = np.empty((d1*d2, len(clam)))
+        for j, espec in enumerate(longSpec.eflam.reshape(-1, d_wave)):
+            ceflam[j, :]=espec[cloc]
+
+    if longSpec.flam.ndim==3:
+        cflam=cflam.reshape(d1, d2, len(clam))
+    elif longSpec.flam.ndim==2:
+        cflam=cflam.reshape(d1, len(clam))
+
+    if fix_uneven_lamdas is True:
+        clam=np.linspace(clam[0], clam[-1], len(clam))
+
+
+    if longSpec.eflam is not None:
+        cutSpec = spectrum(lam=clam, lamspec=cflam, errlamspec=ceflam, wavesyst=longSpec.wavesyst)
+    else:
+        cutSpec = spectrum(lam=clam, lamspec=cflam, wavesyst=longSpec.wavesyst)
+
+
+
+    index_val=calcCenarroIndex(cutSpec, index)
+
+    return index_val
+
+
+
+def calcCenarroIndex(spectrum, index, disp=None, round_prec=8, verbose=False):
     """
     Function to calculate absorption line index strength using inverse variance weighting
 
@@ -2113,8 +2170,8 @@ def calcCenarroIndex(spectrum, index, disp=None, round_prec=10, verbose=False):
                     ind_var_tot = disp**2*(ind_var_1 + ind_var_2)
 
         else:
-            print "No Feature bandpass. Assuming we want the TiO index"
-            print "AT THE MOMENT THIS DOESN'T TAKE THE VARIANCE SPECTRUM INTO ACCOUNT"
+            #print "No Feature bandpass. Assuming we want the TiO index"
+            #print "AT THE MOMENT THIS DOESN'T TAKE THE VARIANCE SPECTRUM INTO ACCOUNT"
             blue_cval=alpha1+alpha2*(np.mean(np.array(index['blue_start'], index['blue_stop'])))
             red_cval=alpha1+alpha2*(np.mean(np.array(index['red_start'],index['red_stop'])))
 
