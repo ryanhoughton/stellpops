@@ -253,6 +253,17 @@ class indlib():
                                   blue_start=blue_start, blue_stop=blue_stop, \
                                   red_start=red_start, red_stop=red_stop, wavesyst=wavesyst, \
                                   verbose=verbose)
+        ## add wavelength system
+        #if wavesyst is not None:
+        #    if (wavesyst=="vac" or wavesyst=="VAC" or wavesyst=="Vac"):
+        #        self.wavesyst='vac' 
+        #    elif (wavesyst=="air" or wavesyst=="AIR" or wavesyst=="Air"):
+        #        self.wavesyst='air' 
+        #    else:
+        #        raise ValueError("wavesyst not understood. Should be air or vac.")
+        #else:
+        #    warn.warn("You failed to specify if the wavelengths are defined in AIR or VAC units.")
+        #    self.wavesyst=None
 
     # allow self.var instead of self['var']
     def __getitem__(self,item):
@@ -501,17 +512,17 @@ def calcMean3Fe(Fe5270, Fe5335, Fe5406, eFe5270=None, eFe5335=None, eFe5406=None
     return rlist
 
 
-def calcMgFe(Mgb, Fe1, Fe2, Fe3=None, eMgb=None, eFe1=None, eFe2=None, eFe3=None):
+def calcMgFe(Mgb, Fe1, Fe2, Fe3=None, eMgb=None, eFe1=None, eFe2=None, eFe3=None, returnMeanFe=False):
     """
     Wrapper for choosing between MgFe2 and MgFe3
     """
     if Fe3 is None:
-        res = calcMgFe2(Mgb, Fe1, Fe2, eMgb=eMgb, eFe5270=eFe1, eFe5335=eFe2)
+        res = calcMgFe2(Mgb, Fe1, Fe2, eMgb=eMgb, eFe5270=eFe1, eFe5335=eFe2, returnMeanFe=returnMeanFe)
     else:
-        res = calcMgFe3(Mgb, Fe1, Fe2, Fe3, eMgb=eMgb, eFe5270=eFe1, eFe5335=eFe2, eFe5406=eFe3)
+        res = calcMgFe3(Mgb, Fe1, Fe2, Fe3, eMgb=eMgb, eFe5270=eFe1, eFe5335=eFe2, eFe5406=eFe3, returnMeanFe=returnMeanFe)
     return res
 
-def calcMgFe2(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
+def calcMgFe2(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None, returnMeanFe=False):
     """
     Return [MgFe] from Gonzalez 1993
 
@@ -527,13 +538,19 @@ def calcMgFe2(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
     if (eMgb is not None) & (eFe5270 is not None) & (eFe5335 is not None):
         # see RH note book 28/9/16
         eMgFe = (np.sqrt(0.25*(eMgb/Mgb)**2.0 + 0.25*(eavFe/avFe)**2.0)) * MgFe # relative error calc, scaled up by value
-        rlist = [MgFe, eMgFe]
+        if returnMeanFe:
+            rlist = [[MgFe, eMgFe], [avFe, eavFe]]
+        else:
+            rlist = [MgFe, eMgFe]
     else:
-        rlist = MgFe
+        if returnMeanFe:
+            rlist = [MgFe, avFe]
+        else:
+            rlist = MgFe
         
     return rlist
 
-def calcMgFe3(Mgb, Fe5270, Fe5335, Fe5406, eMgb=None, eFe5270=None, eFe5335=None, eFe5406=None):
+def calcMgFe3(Mgb, Fe5270, Fe5335, Fe5406, eMgb=None, eFe5270=None, eFe5335=None, eFe5406=None, returnMeanFe=False):
     """
     Return modified [MgFe] akin to  Gonzalez 1993
 
@@ -549,10 +566,16 @@ def calcMgFe3(Mgb, Fe5270, Fe5335, Fe5406, eMgb=None, eFe5270=None, eFe5335=None
     if (eMgb is not None) & (eFe5270 is not None) & (eFe5335 is not None) & (eFe5406 is not None):
         # see RH note book 28/9/16
         eMgFe3 = (np.sqrt(0.25*(eMgb/Mgb)**2.0 + 0.25*(eavFe/avFe)**2.0)) * MgFe # relative error calc, scaled up by value
-        rlist = [MgFe3, eMgFe3]
+        if returnMeanFe:
+            rlist = [[MgFe3, eMgFe3], [av3Fe, eav3Fe]]
+        else:
+            rlist = [MgFe3, eMgFe3]
     else:
-        rlist = MgFe3
-        
+        if returnMeanFe:
+            rlist = [MgFe3, av3Fe]
+        else:
+            rlist = MgFe3
+            
     return rlist
 
 def calcMgFePrime(Mgb, Fe5270, Fe5335, eMgb=None, eFe5270=None, eFe5335=None):
@@ -600,6 +623,24 @@ def fitLickRes(data=lickResolutions, order=4, npoints=100, doPlot=True, update=T
 
     return coef
 
+def addSigma2IndLib(lib, sigma=200.0, verbose=False):
+    """
+    RH 31/1/2017
+    
+    Add FWHM resolutions to each index in the index library, based on a velocity dispersion (sigma) in km/s
+    
+    """
+    indices=lib.names
+    for ind in indices:
+        # calc central feature wavelength
+        clam = np.mean(np.array(lib[ind]['ind_start'] + lib[ind]['ind_stop']))
+        FWHM = 2.355*(sigma*1e3/st.c) * clam
+        lib[ind]['resol']=FWHM
+        if verbose: print "Added FWHM resoln of "+str(FWHM)+" AA to index "+ind+" at wavelength "+str(clam)
+    return lib
+
+    
+    
 def addLickRes2IndLib(lib, coefs=lickResPolyFit):
     """
     RH 20/10/16
@@ -803,3 +844,60 @@ class dispCorr():
         return rlist
 
 
+def drawGrid(xindex, yindex, xarray, yarray, ages, Zs, alpha=None, color='black', \
+             ageLabels=True, Zlabels=True, labelsize=10, ZforAgeLabel='min', ageForZlabel='min', \
+             aha='right', ava='bottom', zha='right', zva='top', showAlpha=False, \
+             ageZforAlphaLabel=['max','max'], ageSuffix='Gyr', Zprefix='[Z/H]', alphaPrefix=r'[$\alpha$/Fe]'):
+    """
+    Draw a index-index grid
+
+    Previous code cut from Ttools.showZgrid()
+    
+    """
+
+    # find where labels going
+    if ZforAgeLabel=='min':
+        z4agelab = np.min(Zs)
+    else:
+        z4agelab = np.max(Zs)
+    if ageForZlabel=='min':
+        age4zlab=np.min(ages)
+    else:
+        age4zlab=np.max(ages)
+    age4zlabloc = np.where(ages==age4zlab)[0]
+    
+    for n, zi in enumerate(Zs):
+        pl.plot(xarray[n,:], yarray[n,:], "-", color=color)
+
+        if ageLabels & (z4agelab==zi):
+            for l in xrange(len(ages)):
+                pl.text(xarray[n,l], yarray[n,l], str(ages[l])+ageSuffix, \
+                        fontsize=labelsize, horizontalalignment=aha, verticalalignment=ava)
+        if Zlabels:
+            pl.text(xarray[n,age4zlabloc], yarray[n,age4zlabloc], Zprefix+'='+str(zi), \
+                    fontsize=labelsize, horizontalalignment=zha, verticalalignment=zva)
+
+    # now draw connectors at fixed Z, rather than fixed age
+    at1=xarray.T
+    at2=yarray.T
+    for v1, v2 in zip(at1,at2):
+        pl.plot(v1, v2, ":", color=color)
+
+    # show alpha value if asked
+    if showAlpha:
+        if ageZforAlphaLabel[0]=='min':
+            age4AlphaLab = np.argmin(ages)
+        else:
+            age4AlphaLab = np.argmax(ages)
+        if ageZforAlphaLabel[1]=='min':
+            z4AlphaLab = np.argmin(Zs)
+        else:
+            z4AlphaLab = np.argmax(Zs)
+
+        pl.text(xarray[z4AlphaLab, age4AlphaLab], \
+                yarray[z4AlphaLab, age4AlphaLab], \
+                alphaPrefix+'='+str(alpha), color=color)
+
+    pl.xlabel(xindex)
+    pl.ylabel(yindex)
+    

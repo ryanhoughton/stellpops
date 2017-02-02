@@ -65,7 +65,7 @@ class spectrum:
     
     def __init__(self, lam=None, lamspec=None, errlamspec=None, mu=None, muspec=None, errmuspec=None, \
                  age=None, mass=None, alpha=None, Z=None, IMF=None, filter=False, model=None, resolution=None, wavesyst=None, \
-                 userdict=None):
+                 userdict=None, debug=False):
 
         """
         Inputs:
@@ -109,7 +109,7 @@ class spectrum:
             #     - Magnitudes will be returned as 2D arrays with NZxNAGE elements
            
         """
-
+        
         # set which attributes may be arrays, excluding flam and fmu (which obviously can be)
         self.arrayAttrs=['age', 'Z', 'alpha', 'mass', 'IMF']
         self.unrastered=False # Spectra always loaded in an unrasterised, multi-D manner
@@ -123,66 +123,12 @@ class spectrum:
         ##########################################################
         # Define spectrum part that was given
         ##########################################################
-        
         if lamspec is not None:
-            # check that lam has been given
-            if lam is None: raise "If you give lamspec, you must also give lam"
+            self._processLamspec(lam, lamspec, errlamspec=errlamspec)
+        elif muspec is not None:
+            self._processMuspec(mu, muspec, errmuspec=errmuspec)
 
-            # make sure 2d
-            flam = np.atleast_2d(singleOrList2Array(lamspec))
-            # get array size
-            loc = flam.shape
-
-            # assign dims of non-spectral component
-            self.dims = list(loc[:-1])
-            self.nspec = self.getSize()
-            # assign dims of spectral component
-            self.nlam = loc[-1]
-            
-            # assign data to class
-            self.lam  = np.array(lam)
-            self.flam = flam
-
-            # deal with error spectra
-            if errlamspec is not None:
-                eflam = np.atleast_2d(errlamspec)
-                eloc = eflam.shape
-                self.eflam = eflam
-                # sanity check
-                assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
-            else:
-                self.eflam = None
-
-        if muspec is not None:
-            if mu is None: raise "If you give muspec, you must also give mu"
-
-            # make sure 2D
-            fmu = np.atleast_2d(muspec)
-            # get array size
-            loc = fmu.shape
-            
-            # assign dims of non-spectral component
-            self.dims = list(loc[:-1])
-            self.nspec = self.getSize()
-            # assign dims of spectral component
-            self.nmu = loc[-1]
-            
-            # assign data to class
-            self.mu  = np.array(mu)
-            self.fmu = np.atleast_2d(singleOrList2Array(fmu))
-
-            # deal with error spectra
-            if errmuspec is not None:
-                efmu = np.atleast_2d(errmuspec)
-                eloc = efmu.shape
-                self.efmu = efmu
-                # sanity check
-                assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
-            else:
-                self.efmu=None
-            
-
-        
+        if debug: pdb.set_trace()
         #############################################################
         # Define spectrum attributes
         #############################################################
@@ -275,15 +221,78 @@ class spectrum:
         ###############################################################################################################
         # Define the spectrum part that wasn't given - this needs to be here due to the way unraster and reraster work
         ###############################################################################################################
-
+        if debug: pdb.set_trace()
         if hasattr(self, "flam"):
             # calc the corresponding muspec
-            self.calcmuspec(filter=filter)
-
-        if hasattr(self,"fmu"):
+            self.calcmuspec(filter=filter, debug=debug)
+        elif hasattr(self,"fmu"):
             # calc the corresponding lamspec
             self.calclamspec(filter=filter)
+        if debug: pdb.set_trace()
 
+    def _processLamspec(self, lam, lamspec, errlamspec=None):
+        """
+        To be usually called by __init__: process the lam and flam arrays 
+        """
+        # check that lam has been given
+        if lam is None: raise "If you give lamspec, you must also give lam"
+        
+        # make sure 2d
+        flam = np.atleast_2d(singleOrList2Array(lamspec))
+        # get array size
+        loc = flam.shape
+
+        # assign dims of non-spectral component
+        self.dims = list(loc[:-1])
+        self.nspec = self.getSize()
+        # assign dims of spectral component
+        self.nlam = loc[-1]
+
+        # assign data to class
+        self.lam  = np.array(lam)
+        self.flam = flam
+
+        # deal with error spectra
+        if errlamspec is not None:
+            eflam = np.atleast_2d(errlamspec)
+            eloc = eflam.shape
+            self.eflam = eflam
+            # sanity check
+            assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
+        else:
+            self.eflam = None
+
+    def _processMuspec(self, mu, muspec, errmuspec=None):
+        """
+
+        """
+        # check that mu has been given
+        if mu is None: raise "If you give muspec, you must also give mu"
+        # make sure 2D
+        fmu = np.atleast_2d(muspec)
+        # get array size
+        loc = fmu.shape
+
+        # assign dims of non-spectral component
+        self.dims = list(loc[:-1])
+        self.nspec = self.getSize()
+        # assign dims of spectral component
+        self.nmu = loc[-1]
+
+        # assign data to class
+        self.mu  = np.array(mu)
+        self.fmu = np.atleast_2d(singleOrList2Array(fmu))
+
+        # deal with error spectra
+        if errmuspec is not None:
+            efmu = np.atleast_2d(errmuspec)
+            eloc = efmu.shape
+            self.efmu = efmu
+            # sanity check
+            assert np.all(loc==eloc), "Flux and error arrays appear different sizes..."
+        else:
+            self.efmu=None
+            
         
     def checkDims(self, attr):
         """
@@ -506,39 +515,49 @@ class spectrum:
 
         """
         # unrasterise spectra - flam and fmu
-        self.originalDims = self.dims
-        self.originalFDims = self.flam.shape
-        # make sure flam or fmu exists before reshaping - as we use this function in calclamspec/calcmuspec, where
-        # the other type hasn't been created yet
-        if hasattr(self,"flam"):
-            self.flam = self.flam.reshape((-1,self.nlam))
-            if self.eflam is not None:
-                self.eflam = self.eflam.reshape((-1, self.nlam))
-        if hasattr(self,"fmu"):
-            self.fmu = self.fmu.reshape((-1,self.nmu))
-            if self.efmu is not None:
-                self.efmu = self.efmu.reshape((-1, self.nmu))
-        
-        self.dims = self.flam.shape[:-1]
-        self.fdims = self.flam.shape
-
-        # can't do this - in case fmu not defined yet
-        #assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
-        #       "Unrasterised flam and fmu have different shapes?"
-
-        # unrasterise known (possibly) array attributes
+        self.originalDims = cp.copy(self.dims)
+        self.originalFDims = cp.copy(self.flam.shape)
         self.unrasteredAttrs=[] # init a tally of which attrs were unrastered
-        for attr in cp.copy(self.arrayAttrs):
-            self._unrasterAttr(attr)
-        # attempt to unrasterise userdict attributes
-        if self.__userdict__ is not None:
-            for attr in __userdict__.keys():
-                try:
-                    self._unrasterAttr(attr)
-                except:
-                    warn.warn("Failed to unrasterise user attribute "+str(attr)+".")
-        # finally, log the current format as unrasterised
-        self.unrastered=True
+
+        # check if spectrum already just 2D
+        if len(self.originalFDims)==2:
+            warn.warn("Spectrum already in 2D format, nothing to unraster")
+        else:
+            # make sure flam or fmu exists before reshaping - as we use this function in calclamspec/calcmuspec, where
+            # the other type hasn't been created yet
+            if hasattr(self,"flam"):
+                self.flam = self.flam.reshape((-1,self.nlam))
+                if self.eflam is not None:
+                    self.eflam = self.eflam.reshape((-1, self.nlam))
+            if hasattr(self,"fmu"):
+                self.fmu = self.fmu.reshape((-1,self.nmu))
+                if self.efmu is not None:
+                    self.efmu = self.efmu.reshape((-1, self.nmu))
+
+            self.dims = cp.copy(self.flam.shape[:-1])
+            self.fdims = cp.copy(self.flam.shape)
+
+            # can't do this - in case fmu not defined yet
+            #assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
+            #       "Unrasterised flam and fmu have different shapes?"
+
+            # unrasterise known (possibly) array attributes
+            for attr in cp.copy(self.arrayAttrs):
+                self._unrasterAttr(attr)
+            # attempt to unrasterise userdict attributes
+            if self.__userdict__ is not None:
+                for attr in __userdict__.keys():
+                    try:
+                        self._unrasterAttr(attr)
+                    except:
+                        warn.warn("Failed to unrasterise user attribute "+str(attr)+".")
+            # define the dimensions of the unrastered types
+            self.unrasterDims = cp.copy(self.dims)
+            self.unrasterFDims = cp.copy(self.fdims)
+            
+            
+            # finally, log the current format as unrasterised
+            self.unrastered=True
 
 
     def _unrasterAttr(self,attr):
@@ -570,77 +589,92 @@ class spectrum:
                 self.unrasteredAttrs.append(attr)
             else:
                 raise ValueError("Attr dimensions not understood.")
-            
 
-    def reraster(self):
+    def reraster(self, checkSanity=True, debug=False, verbose=False):
         """
         Convert the flam and fmu spectral arrays back into their original, mutli-D formats.
         """
-        # sanity check
-        assert self.unrastered, "Spectra are not unrasterised, so cannot re-rasterise"
+        if debug: pdb.set_trace()
 
-        # re-rasterise the flam and fmu - they should ALWAYS exist together at this point.
-        newLamShape = cp.copy(self.originalDims)
-        newLamShape.append(self.nlam)
-        tnewLamShape = tuple(newLamShape)
-        self.flam = self.flam.reshape(tnewLamShape)
-        newMuShape = cp.copy(self.originalDims)
-        newMuShape.append(self.nmu)
-        tnewMuShape = tuple(newMuShape)
-        self.fmu = self.fmu.reshape(tnewMuShape)
-        # don't forget about the error arrays
-        if self.eflam is not None:
-            assert self.efmu is not None, "Why does eflam exist, but not efmu?"
-            self.eflam = self.eflam.reshape(tnewLamShape)
-            self.efmu = self.efmu.reshape(tnewMuShape)
+        # check if spectrum is inherently 2D
+        if len(self.originalFDims)==2:
+            warn.warn("spectum inherently 2D, nothing to reraster")
+        else:
+            # sanity check
+            assert self.unrastered, "Spectra are not unrasterised, so cannot re-rasterise"
+            # re-rasterise the flam and fmu - they should ALWAYS exist together at this point.
+            newLamShape = list(cp.copy(self.originalDims))
+            newLamShape.append(self.nlam)
+            tnewLamShape = tuple(newLamShape)
+            self.flam = self.flam.reshape(tnewLamShape)
+            newMuShape = list(cp.copy(self.originalDims))
+            newMuShape.append(self.nmu)
+            tnewMuShape = tuple(newMuShape)
+            self.fmu = self.fmu.reshape(tnewMuShape)
+            # don't forget about the error arrays
+            if self.eflam is not None:
+                assert self.efmu is not None, "Why does eflam exist, but not efmu?"
+                self.eflam = self.eflam.reshape(tnewLamShape)
+                self.efmu = self.efmu.reshape(tnewMuShape)
 
-        # reset dims
-        self.unrasterDims = cp.copy(self.dims)
-        self.unrasterFDims = cp.copy(self.fdims)
-        self.dims = cp.copy(self.originalDims)
-        self.fdims = cp.copy(self.originalFDims)
-        # sanity check
-        assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
-               "Re-rasterised flam and fmu have different shapes?"
-        self.unrastered=False
+            # sanity check
+            if checkSanity:
+                assert np.all(np.equal(np.array(self.flam.shape[:-1]), np.array(self.fmu.shape[:-1]))), \
+                       "Re-rasterised flam and fmu have different shapes?"
+            self.unrastered=False
 
-        # re-rasterise all unrastered attrs
-        for attr in cp.copy(self.unrasteredAttrs):
-            self._rerasterAttr(attr)
+            # re-rasterise all unrastered attrs
+            for attr in cp.copy(self.unrasteredAttrs):
+                self._rerasterAttr(attr, debug=debug)
+                if verbose: print "Rerastered "+attr
 
-        # sanity check - no more unrastered attrs
-        assert len(self.unrasteredAttrs)==0, "Still have unrastered attributes?"
-        # delete the redundant vars
-        delattr(self, "unrasteredAttrs")
+            if debug: pdb.set_trace()
+            # sanity check - no more unrastered attrs
+            assert len(self.unrasteredAttrs)==0, "Still have unrastered attributes?"
+            # reset dims - don't use originalDims here, as flux dims might have changed between rastering (interpOnNewLam)
+            self.fdims = cp.copy(self.flam.shape)
+            self.dims = cp.copy(self.fdims[:-1])
+            # delete the redundant var
+            delattr(self, "unrasterDims")
+            delattr(self, "unrasterFDims")
+            
+            # set as re-rastered
+            self.unrastered=False
+        # delete more redundant vars, which were needed for 2D spec case
         delattr(self, "originalDims")
-        delattr(self, "unrasterDims")
-        # set as re-rastered
-        self.unrastered=False
+        delattr(self, "originalFDims")
+        delattr(self, "unrasteredAttrs")
 
-    def _rerasterAttr(self, attr):
+    def _rerasterAttr(self, attr, debug=False):
         """
         Helper function to re-rasterise the array attributes
         """
         # only unrasterise if not scalar attribute.
         # Although this should never be a problem, as _rerasterise is called with args from self.unrasteredAttrs
+        
         if (not np.isscalar(getattr(self,attr))) and (getattr(self,attr) is not None):
+            if debug: pdb.set_trace()
             ndims = len(self.unrasterDims)
             attrShape = getattr(self, attr).shape
             nAdims = len(attrShape)
             # check for array attrs
             if nAdims==ndims:
+                # attr is like an age, Z or alpha: no wavelength info
                 # sanity check
                 firstCheck = np.all(np.equal(attrShape,self.unrasterDims)) # attr has shape like age, Z, etc
                 assert firstCheck, \
                    attr+" attribute does not have same dimensions as array attribute."
-                setattr(self, attr, getattr(self,attr).reshape(self.dims))
+                setattr(self, attr, getattr(self,attr).reshape(self.originalDims))
                 # remove this attr from the unraster list
                 self.unrasteredAttrs.remove(attr)
             elif nAdims == ndims+1:
-                secondCheck = np.all(np.equal(attrShape, self.unrasterFDims))
+                # attr has wavelength info, like flam, eflam etc
+                secondCheck = np.equal(attrShape[0], self.unrasterFDims[0]) # check only product of dims - not nlam
                 assert secondCheck, \
                    attr+" attribute does not have same dimensions as spectra."
-                setattr(self, attr, getattr(self,attr).reshape(self.fdims))
+                newFDims = list(cp.copy(self.originalDims))
+                newFDims.append(attrShape[1])
+                setattr(self, attr, getattr(self,attr).reshape(newFDims)) # Don't use self.fdims or self.originalFDims here (e.g. interpOnNewLam)
                 # remove this attr from the unraster list
                 self.unrasteredAttrs.remove(attr)
             else:
@@ -658,7 +692,7 @@ class spectrum:
         """
         return np.prod(self.dims)
 
-    def calcmuspec(self, filter=False):
+    def calcmuspec(self, filter=False, debug=False):
         """
         Calculate a muspec (GJy @ GHz) from a lamspec (erg/s/cm**2/AA @ AA)
         """
@@ -666,9 +700,10 @@ class spectrum:
         self.mu = c / (self.lam) * 1e1
         # erg/s/cm**2/AA => *LAM[AA]*LAM[M]  / C[M/S] * 1e23 = LAM[AA]*LAM[AA]/ c[m/s] * 1e13 => GJy=1e-14 erg/s/cm**2/Hz (Jy=1e-23erg/s/cm2/Hz=1e-26W/m2/Hz)
 
+        if debug: pdb.set_trace()
         # unraster - convert flam into 2D
         self.unraster()
-
+        
         self.fmu = [] # init
         if filter:
             for flam in self.flam:
@@ -692,7 +727,7 @@ class spectrum:
         self.nmu = loc[-1]
 
         # put back into multi-D format
-        self.reraster()
+        self.reraster(debug=debug)
 
     def calclamspec(self, filter=False):
         """
@@ -733,6 +768,8 @@ class spectrum:
     def rebinLam(self, dLam=1e-4, flux=False):
         """
         Rebin the spectrum to a fixed/minimum dLam
+
+        Flux - do rebinning by conserving flux
         """
 
         newflams=[]
@@ -747,6 +784,46 @@ class spectrum:
         self.reraster()
         self.calcmuspec()
 
+    def interpOnNewLam(self, newlam, imethod='linear'):
+        """
+        Interpolate the spectra onto a new lambda grid.
+
+        """
+        self.newlam = newlam
+        # put into 2D mode
+        self.unraster()
+        newflam = [] # init
+        # loop over spectra, interpolating onto new grid
+        for fl in self.flam:
+            newflam.append(interpolate(self.lam, fl, newlam, method=2, kind=imethod))
+        # put as new attrib
+        self.newflam = np.atleast_2d(singleOrList2Array(newflam))
+        # add to unrastered list
+        self.unrasteredAttrs.append("newflam")
+        
+        # process error array in same way if exists
+        if self.eflam is not None:
+            neweflam = []
+            for ef in self.eflam:
+                neweflam.append(interpolate(self.lam, ef, newlam, method=2, kind=imethod))
+            self.neweflam = np.atleast_2d(singleOrList2Array(neweflam))
+            self.unrasteredAttrs.append("neweflam")
+            assert np.all(self.newflam.shape==self.neweflam.shape), 'new flux and error arrays different sizes?'
+        else:
+            self.neweflam=None
+            neweflam=None
+
+        # update unrastered Flux dims
+        #newFDims = self.newflam.shape
+        #assert self.unrasterFDims[0]==newFDims[0], 'Changed dimensions, somehow.'
+        #self.unrasterFDims = newFDims
+        #self.nlam = newFDims[-1] # be sure to update nlam here as this is used to construct dims in reraster
+        # reraster, incl newlam (and neweflam), but with no checks against sizes of flam and fmu
+        self.reraster(checkSanity=False)
+        # copy back & process
+        self._processLamspec(self.newlam, self.newflam, errlamspec=self.neweflam) # need self.[vars] here as been rerastered (except for newlam)
+        # construct new muspec to be consistent
+        self.calcmuspec(filter=filter)
 
     def calcABmag(self, filter, z=0.0, plot=False, bandcor=False):
         """
@@ -960,6 +1037,8 @@ class spectrum:
         
         l = self.quickABmag(filter, z=z, bandcor=bandcor)
         m = self.mass
+        setattr(self,"Lsuns", 10.0**(-0.4*l) / 10.0**(-0.4*lsun))
+        
         m2l = (m/10.0**(-0.4*l)) / (msun/10.0**(-0.4*lsun))
 
         return m2l
@@ -1027,6 +1106,47 @@ class spectrum:
 
         return cspec
 
+    def calcLogLamGrid(self, velscale=None, reraster=True, verbose=False):
+        """
+        Put the spectra onto a loglam grid
+        """
+        
+        # get minimum vel resolution in spec and use this for dloglam
+        #if velscale is None:
+        #    velscale = np.mean((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 #
+        
+        
+        # calc regular loglam grid
+        if velscale is None:
+            self.nloglam = self.nlam 
+            self.loglam = np.exp(np.linspace(np.log(self.lam[0]), np.log(self.lam[-1]), nloglam ))
+            dloglam = (np.log(self.lam[-1])-np.log(self.lam[0]))/(nloglam-1.)
+            self.velscale = (np.exp(dloglam)-1.) * c
+        else:
+            dloglam = np.log(1.0 + velscale/c*1e3)
+            self.loglam = np.exp(np.arange(np.log(self.lam[0]), np.log(self.lam[-1]), dloglam))
+            self.nloglam = len(self.loglam)
+
+        count=0
+        self.floglam=[]
+        self.unraster()
+        
+        for flam in self.flam:
+            count=count+1
+            # interpolate onto loglam grid
+            self.floglam.append(interpolate(self.lam,flam,self.loglam, fill_value=np.nan, \
+                                            bounds_error=False, method=1, kind='linear'))
+            if verbose: print "Interpolated spec "+str(count)+" of "+str(len(self.flam))
+        self.floglam = np.atleast_2d(singleOrList2Array(self.floglam))
+
+        if reraster:
+            # manually re-raster floglam because it might have different nlam to original spec
+            self.floglam = np.array(self.floglam)
+            loglamDims = cp.deepcopy(self.originalDims)
+            loglamDims.extend([self.nloglam])
+            self.floglam = self.floglam.reshape(loglamDims)
+            self.reraster()
+        
     def gaussVelConvolve(self, vel, sigma, h3h4=None, correct4InstRes=True, nsig=5.0, losvd=None, overwrite=True, verbose=True):
         """
         Purpose: to convolve the spectrum with a Gaussian of known velocity (V)
@@ -1151,8 +1271,10 @@ class spectrum:
         Function to calculate absorption line index strength.
 
         Inputs:
-            index: an indlib class from indexTools.py
-            disp: float - spectral dispersion [A/pixel] (i.e. pixel sampling), NOT anything to do with spectral resolution.
+            index: an ind class from indexTools.py
+            disp: float - spectral dispersion [A/pixel] (i.e. pixel sampling),
+                          NOT anything to do with spectral (FWHM) resolution!!!
+                          NOT anything to do with velocity dispersion !!!
             round_prec: precision for rounding wavelengths (Method=4)
             Method: Specify the index calculation method
                     0 = Simple method using means (no variance weighting)
@@ -1869,13 +1991,8 @@ def cutAndGaussLamConvolve(longSpec, index, outputFWHM, currentFWHM=None, nSig=5
     cuthigh= (index['red_stop']   + nSig*kernelSigma)
 
     # cut spec
-    cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
-    assert len(cloc)!=0, "Found no matching wavelengths"
-    clam  = longSpec.lam[cloc]
-    cflam=[]
-    for s in longSpec.flam:
-        cflam.append(s[cloc])
-    cutSpec = spectrum(lam=clam, lamspec=cflam)
+    cutSpec = longSpec.copy()
+    cutSpec.clipSpectralRange(cutlow, cuthigh)
 
     # convolve
     cutSpec.gaussLamConvolve(kernelSigma, overwrite=True, verbose=verbose)
@@ -1922,17 +2039,9 @@ def cutAndGaussVelConvolve(longSpec, index, outputSigma, currentFWHM=None, doPlo
     cutlow = (index['blue_start'] - 5.0*kernelSigma)
     cuthigh= (index['red_stop']   + 5.0*kernelSigma)
 
-    # cut spec
-    cloc = np.where( (longSpec.lam > cutlow) & (longSpec.lam < cuthigh) )[0]
-    assert len(cloc)!=0, "Found no matching wavelengths"
-    clam  = longSpec.lam[cloc]
-    cflam=[]
-    # now make a copy of the longSpec, retaining all auxillary info, such as ages, Z, IMF, etc
+    ## cut spec
     cutSpec = longSpec.copy()
-    cutSpec.unraster() # put into 2D format
-    for si in xrange(cutSpec.nspec):
-        cutSpec.flam[si] = cutSpec.flam[si,cloc]
-    cutSpec.reraster() # put back into multi-D format
+    cutSpec.clipSpectralRange(cutlow, cuthigh)
 
     # convolve
     velSigma = kernelSigma/meanWave*c/1e3

@@ -9,6 +9,7 @@ import atpy as at
 basedir="/home/houghton/z/data/stellar_pops/"
 
 L_sun = 3.826E33 # the L_sun defined by BC03 in erg/s
+RESOLUTION=[None,2.56] # aprox: infact, <0.75um, FWHM=MILES=2.56, but >0.75um, R=2000
 
 def loadCD12ssps(sedpath=basedir+"CvD12_v1.2", ageglob="t??.?_solar.ssp", massfile="mass_ssp.dat", model="CD12", Z=0.02, verbose=True):
     """
@@ -53,7 +54,7 @@ def loadCD12ssps(sedpath=basedir+"CvD12_v1.2", ageglob="t??.?_solar.ssp", massfi
         # get imfs of fluxes
         imfs.append(imftags) 
         # get wave (once)
-        if wave==None: wave = ssp.col1
+        if wave is None: wave = ssp.col1
         # get fluxes for each IMF
         flux1.append(ssp.col2*factor)
         flux2.append(ssp.col3*factor)
@@ -62,19 +63,19 @@ def loadCD12ssps(sedpath=basedir+"CvD12_v1.2", ageglob="t??.?_solar.ssp", massfi
         flux5.append(ssp.col6*factor)
         if verbose: print("Loaded "+f)
 
-
     flux=[]
     flux.append(np.array(flux1))
     flux.append(np.array(flux2))
     flux.append(np.array(flux3))
     flux.append(np.array(flux4))
     flux.append(np.array(flux5))
+    flux = np.array(flux); ages=np.array(ages); Zs=np.array(Zs); masses=np.array(masses).T; imftags=np.array(imftags)
+    imfs = np.tile(imftags,(len(ages),1)).T
+    Zs   = np.tile(Zs,(len(imftags),1))   
+    ages = np.tile(ages, (len(imftags),1))
     # now make spectra for age variations, one for each IMF
-    specs=[]
-    for q in range(5):
-        spec = st.spectrum(lamspec=flux[q], lam=wave, age=ages, mass=masses[:,q], \
-                          Z=Zs[q], IMF=imftags[q], model=model, wavesyst="vac")
-        specs.append(spec)
+    specs = st.spectrum(lamspec=flux, lam=wave, age=ages, mass=masses, Z=Zs, IMF=imfs, model=model, \
+                        resolution=RESOLUTION, wavesyst="vac")
 
     return specs
 
@@ -179,7 +180,43 @@ def loadCD12spec(filepath):
                 '[Si/Fe] = +0.3', '[Si/Fe] = -0.3']}
         return st.spectrum(lamspec=newflux, lam=newlambs, age=Age,
                           Z=met, IMF=IMF, model='CD12', userdict=abunlist,
-                          mass=mass, wavesyst="vac")
+                          mass=mass, resolution=RESOLUTION, wavesyst="vac")
 
     else:
         raise ValueError('Did not input correct CD12 file [as of 03-04-14]')
+
+
+def investigateTi(lamRange=[4000,6000], sigma=200.0):
+    """
+    Show how the spectra change for increased Ti/Fe abundance
+    """
+
+    cso = loadCD12ssps()
+    cvo = loadCD12varelem()
+    cs=cso.copy()
+    cv=cvo.copy()
+    cs.clipSpectralRange(lamRange[0], lamRange[1])
+    cs.gaussVelConvolve(0.0,sigma)
+    cv.clipSpectralRange(lamRange[0],lamRange[1])
+    cv.gaussVelConvolve(0.0,sigma)
+    pl.figure()
+    pl.subplot(211)
+    pl.plot(cs.lam, cs.flam[3,-1,:])
+    pl.plot(cv.lam, cv.flam[12,:])
+    pl.subplot(212)
+    pl.plot(cs.lam, cs.flam[3,-1,:]/np.median(cs.flam[3,-1,:]))
+    pl.plot(cs.lam, cs.flam[0,-1,:]/np.median(cs.flam[0,-1,:]))
+    pl.figure()
+    pl.subplot(211)
+    #fflam = st.rebin(cv.lam,cv.flam[12,:], cs.lam)
+    #pl.plot(cs.lam, fflam/cs.flam[3,-1,:] / np.median(fflam/cs.flam[3,-1,:]), label=cv.abundances[12])
+    for n, flam in enumerate(cv.flam):
+        if (n % 2)==0:
+            fflam = st.rebin(cv.lam,flam, cs.lam)
+            pl.plot(cs.lam, fflam/cs.flam[3,-1,:] / np.median(fflam/cs.flam[3,-1,:]), label=cv.abundances[n])
+    pl.legend(loc=0)
+    pl.subplot(212)
+    pl.plot(cs.lam, cs.flam[0,-1,:]/cs.flam[3,-1,:])
+
+    pdb.set_trace()
+    

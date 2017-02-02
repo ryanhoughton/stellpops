@@ -20,6 +20,7 @@ import atpy as ap
 import pdb
 from stellpops import indexTools as it
 from stellpops import M11tools as m11
+from stellpops.indexTools import drawGrid
 
 # setup the base directory
 basedir="/home/houghton/z/data/stellar_pops/"
@@ -75,7 +76,7 @@ def loadModels(dir=basedir+'TMB03/', file='alpha-models', abundance='', suffix='
 
         if verbose:
             print "Found [Z/H] values of ", Zs
-            print 'Found [alpha/H] values of ', As
+            print 'Found [alpha/Fe] values of ', As
 
         newtab={}
         for zi in Zs:
@@ -138,7 +139,7 @@ def showMgFePrime(ages=[12.0], iron1='Fe5270', iron2='Fe5335', rescale=False, ta
     pl.xlabel('[alpha/Fe]')
 
 
-def showZgrid(index1, index2, minage=1.0, maxage=15.0, minZ=-1, maxZ=1.0, alpha='A=0.0', color="k", \
+def showZgrid(index1, index2, minage=1.0, maxage=15.0, minZ=-1, maxZ=1.0, alpha=0.0, color="k", \
               ageLabels=True, Zlabels=True, labelsize=10, ZforAgeLabel='min', ageForZlabel='min', \
               aha='right', ava='bottom', zha='right', zva='top', showAlpha=False, \
               ageZforAlphaLabel=['max','max'], Fe1='Fe5270', Fe2='Fe5335', tab=None, \
@@ -171,7 +172,10 @@ def showZgrid(index1, index2, minage=1.0, maxage=15.0, minZ=-1, maxZ=1.0, alpha=
 
     # quick load of models
     if tab is None:
-        tab = tt.loadT10Models(Fe1=Fe1, Fe2=Fe2)
+        tab = loadT10Models(Fe1=Fe1, Fe2=Fe2)
+
+    # make alpha key:
+    alphaKey='A='+str(alpha)
 
     # determine label positions
     Zkeys = tab['Zkeys']
@@ -180,57 +184,23 @@ def showZgrid(index1, index2, minage=1.0, maxage=15.0, minZ=-1, maxZ=1.0, alpha=
     ages = tab['age']
     ageloc = np.where((ages>=minage) & (ages<=maxage))[0]
 
-    if ZforAgeLabel=='min':
-        z4agelab = np.min(Zs[Zloc])
-    else:
-        z4agelab = np.max(Zs[Zloc])
-    if ageForZlabel=='min':
-        age4zlab=np.min(ages[ageloc])
-    else:
-        age4zlab=np.max(ages[ageloc])
-    age4zlabloc = np.where(ages==age4zlab)[0]
-
     # draw the primary lines of the grid
     array1 = np.zeros((len(ageloc),len(Zloc)))
     array2 = np.zeros_like(array1)
     for n, zki in enumerate(Zkeys[Zloc]):
-        array1[:,n] = tab[zki][alpha][index1][ageloc]
-        array2[:,n] = tab[zki][alpha][index2][ageloc]
-        pl.plot(tab[zki][alpha][index1][ageloc], tab[zki][alpha][index2][ageloc], "-", color=color)
+        array1[:,n] = tab[zki][alphaKey][index1][ageloc]
+        array2[:,n] = tab[zki][alphaKey][index2][ageloc]
 
-        if ageLabels & (z4agelab==Zs[Zloc[n]]):
-            for l in ageloc:
-                pl.text(tab[zki][alpha][index1][l], tab[zki][alpha][index2][l], str(ages[l])+" Gyr", \
-                        fontsize=labelsize, horizontalalignment=aha, verticalalignment=ava)
-
-        if Zlabels:
-            pl.text(tab[zki][alpha][index1][age4zlabloc], tab[zki][alpha][index2][age4zlabloc], zki, \
-                    fontsize=labelsize, horizontalalignment=zha, verticalalignment=zva)
-            
-    # now draw connectors at fixed Z, rather than fixed age
-    at1=array1#.T
-    at2=array2#.T
-    for v1, v2 in zip(at1,at2):
-        pl.plot(v1, v2, ":", color=color)
-
-    # show alpha value if asked
-    if showAlpha:
-        if ageZforAlphaLabel[0]=='min':
-            age4AlphaLab = np.argmin(ages[ageloc])
-        else:
-            age4AlphaLab = np.argmax(ages[ageloc])
-        if ageZforAlphaLabel[1]=='min':
-            z4AlphaLab = np.argmin(Zs[Zloc])
-        else:
-            z4AlphaLab = np.argmax(ages[Zloc])
-        
-        pl.text(tab[Zkeys[Zloc[z4AlphaLab]]][alpha][index1][ageloc[age4AlphaLab]],\
-                tab[Zkeys[Zloc[z4AlphaLab]]][alpha][index2][ageloc[age4AlphaLab]], \
-                alphalabs[alpha], color=color)
-          
-    pl.xlabel(index1)
-    pl.ylabel(index2)
+    # put age on last axis, as is the norm
+    array1=array1.T
+    array2=array2.T
     
+    drawGrid(index1, index2, array1, array2, ages[ageloc], Zs[Zloc], alpha, color=color,
+             ageLabels=ageLabels, Zlabels=Zlabels, labelsize=labelsize, \
+             ZforAgeLabel=ZforAgeLabel, ageForZlabel=ageForZlabel, \
+             aha=aha, ava=ava, zha=zha, zva=zva, showAlpha=showAlpha, \
+             ageZforAlphaLabel=ageZforAlphaLabel, ageSuffix="Gyr", Zprefix='[Z/H]', alphaPrefix=r'[$\alpha$/Fe]')
+
 
 def compareHbMgFe(minage=1.0, maxage=15.0):
     """
@@ -250,31 +220,31 @@ def compareHbMgFe(minage=1.0, maxage=15.0):
     pl.figure(figsize=(10,10))
     # show original Hb MgFe
     pl.subplot(221)
-    showZgrid('MgFe', 'Hb', alpha='A=0.0', color='blue', ageForZlabel='max', tab=tab1, \
+    showZgrid('MgFe', 'Hb', alpha=0.0, color='blue', ageForZlabel='max', tab=tab1, \
               minage=minage, maxage=maxage)
-    showZgrid('MgFe', 'Hb', alpha='A=0.3', color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab1, \
+    showZgrid('MgFe', 'Hb', alpha=0.3, color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab1, \
               minage=minage, maxage=maxage)
     pl.title('Original MgFe index')
     # show the new Hb MgFe' 
     pl.subplot(222)
     
-    showZgrid('MgFeP', 'Hb', alpha='A=0.0', color='blue', ageForZlabel='max', tab=tab1, \
+    showZgrid('MgFeP', 'Hb', alpha=0.0, color='blue', ageForZlabel='max', tab=tab1, \
               minage=minage, maxage=maxage)
-    showZgrid('MgFeP', 'Hb', alpha='A=0.3', color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab1, \
+    showZgrid('MgFeP', 'Hb', alpha=0.3, color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab1, \
               minage=minage, maxage=maxage)
     pl.title('New Primed Index')
     # show original Hb MgFe but using different Fe
     pl.subplot(223)
-    showZgrid('MgFe', 'Hb', alpha='A=0.0', color='blue', ageForZlabel='max', tab=tab2, \
+    showZgrid('MgFe', 'Hb', alpha=0.0, color='blue', ageForZlabel='max', tab=tab2, \
               minage=minage, maxage=maxage)
-    showZgrid('MgFe', 'Hb', alpha='A=0.3', color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab2, \
+    showZgrid('MgFe', 'Hb', alpha=0.3, color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab2, \
               minage=minage, maxage=maxage)
     pl.title('Original MgFe index with Fe5406')
     # show new Hb MgFe using different Fe
     pl.subplot(224)
-    showZgrid('MgFeP', 'Hb', alpha='A=0.0', color='blue', ageForZlabel='max', tab=tab2, \
+    showZgrid('MgFeP', 'Hb', alpha=0.0, color='blue', ageForZlabel='max', tab=tab2, \
               minage=minage, maxage=maxage)
-    showZgrid('MgFeP', 'Hb', alpha='A=0.3', color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab2, \
+    showZgrid('MgFeP', 'Hb', alpha=0.3, color='red', ageForZlabel='max', Zlabels=False, ageLabels=False, tab=tab2, \
               minage=minage, maxage=maxage)
     pl.title('New Primed Index with Fe5406')
 
