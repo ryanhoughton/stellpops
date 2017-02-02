@@ -1,6 +1,6 @@
 import numpy as np 
 import scipy.constants as const
-import ppxf_util as util
+from Code.ppxf import ppxf_util as util
 from astropy.io import fits
 import scipy.interpolate as si
 from stellarpops.tools import CD12tools as CT
