@@ -65,12 +65,9 @@ def lnlike_CvD(theta, parameters):
 
     # import pdb; pdb.set_trace()
 
-    import matplotlib.pyplot as plt
-    plt.figure()
-    plt.plot(general_correction*positive_only_correction*na_correction)
-    
+  
 
-    fig, axs=plt.subplots(nrows=2, ncols=2)
+    #
     for i, fit_range in enumerate(fit_ranges):
 
         #tmask=np.where((np.exp(logLams)>fit_range[0]) & (np.exp(logLams)<fit_range[1]))
@@ -86,8 +83,8 @@ def lnlike_CvD(theta, parameters):
 
         chisq+=np.sum((((g-t*poly)/n)**2))
 
-        axs.flatten()[i].plot(np.exp(logLam_gal[gmask])/(np.exp(vel/c_light)), g, c='k')
-        axs.flatten()[i].plot(np.exp(logLam_gal[gmask])/(np.exp(vel/c_light)), poly*t, c='r', linewidth=2.0)
+        # axs.flatten()[i].plot(np.exp(logLam_gal[gmask])/(np.exp(vel/c_light)), g, c='k')
+        # axs.flatten()[i].plot(np.exp(logLam_gal[gmask])/(np.exp(vel/c_light)), poly*t, c='r', linewidth=2.0)
     return -0.5*chisq#, return_models, return_gals
 
 
@@ -110,7 +107,7 @@ def lnprior_CvD(theta):
     positive_abundances=theta[10:19]
     age, Z, imf=theta[19:]
 
-    if 0.0 < vel < 7000.0 and 0.0 < sigma < 10000:
+    if 0.0 < vel < 7000.0 and 0.0 < sigma < 1000.0:
 
         if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age < 13.5 and -1.5 < Z < 0.4 and 0.0 < imf <3.5:
             return 0.0
@@ -479,14 +476,6 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     general_templates=np.empty((len(normal_elems), len(elem_steps), n_ages, n_Zs, len(sspNew)))
     
     na_templates=np.empty((len(Na_elem_steps), n_ages, n_Zs, len(sspNew)))
-
-
-
-
-
-
-
-
 
     print 'Making the Positive-Only corection templates'
     #Do the positve only correction templates:
