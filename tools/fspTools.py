@@ -38,8 +38,7 @@ def lnlike_CvD(theta, parameters):
     positive_only_correction=get_correction(positive_only_interp, logLams, np.arange(len(positive_abundances)), positive_abundances, age, Z)
     na_correction=na_interp((Na_abundance, age, Z, logLams))
 
-    import matplotlib.pyplot as plt
-    import pdb; pdb.set_trace()
+
     template=template*general_correction*positive_only_correction*na_correction
 
 
@@ -704,19 +703,10 @@ def NGC1277_CVD_read_in_data_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.d
     flux=flux[mask]
     errors=errors[mask]
 
-    import matplotlib.pyplot as plt
-    plt.figure()
-    plt.plot(quick_and_dirty_lamdas[mask], flux, c='k')
 
     #Log rebin them
     galaxy, logLam, velscale = util.log_rebin(lam_range_gal, flux)
     noise, _, _=util.log_rebin(lam_range_gal, errors, velscale=velscale)   
-
-
-    plt.plot(np.exp(logLam), galaxy, c='r')
-    plt.show()
-
-    import pdb; pdb.set_trace()
 
 
     #GoodPixels from pPXF
