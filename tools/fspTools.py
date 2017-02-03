@@ -501,7 +501,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     x=var_elem_spectra['Solar'].lam[t_mask]
     y=var_elem_spectra['Solar'].flam[-1, -1, t_mask]
     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
-    new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+    new_x=var_elem_spectra['Solar'].lam[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra['Solar'].lam[t_mask][-1]-var_elem_spectra['Solar'].lam[t_mask][0])/0.9))+1)
     interp=si.interp1d(x, y, fill_value='extrapolate')
     data=interp(new_x)
 
@@ -532,7 +532,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
 
                     x=var_elem_spectra[elem].lam[t_mask]
                     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
-                    new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+                    new_x=var_elem_spectra[elem].lam[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[elem].lam[t_mask][-1]-var_elem_spectra[elem].lam[t_mask][0])/0.9))+1)
                     interp=si.interp1d(x, y, fill_value='extrapolate')
                     data=interp(new_x)
                             
@@ -559,9 +559,9 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                     else:
                         y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
 
-                    x=var_elem_spectra[elem].lam[t_mask]
+                    x=var_elem_spectra[e].lam[t_mask]
                     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
-                    new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+                    new_x=var_elem_spectra[e].lam[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[e].lam[t_mask][-1]-var_elem_spectra[e].lam[t_mask][0])/0.9))+1)
                     interp=si.interp1d(x, y, fill_value='extrapolate')
                     data=interp(new_x)
                             
@@ -600,9 +600,9 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                     y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
 
 
-                x=var_elem_spectra[elem].lam[t_mask]
+                x=var_elem_spectra[e].lam[t_mask]
                 #Make a new lamda array, carrying on the delta lamdas of high resolution bit
-                new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+                new_x=var_elem_spectra[e].lam[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[e].lam[t_mask][-1]-var_elem_spectra[e].lam[t_mask][0])/0.9))+1)
                 interp=si.interp1d(x, y, fill_value='extrapolate')
                 data=interp(new_x)
                     
