@@ -683,8 +683,8 @@ def showMinML(imf, minAge=None, maxAge=None, minZ=None, maxZ=None, alpha=0.4):
 
 
 def createAgeZAlphaIndexGrid(indices=None, ageRange=None, ZRange=None, exactIMFs=None, exactAlphas=None, isochrone='BaSTI', IMFtype='un', \
-                             sigma=None, atLickRes=False, indexMethod=0, calcMgFe=True, Fe1='Fe5270', Fe2='Fe5335', \
-                             verbose=True, lib=None):
+                             sigma=None, atLickRes=False, calcMgFe=True, Fe1='Fe5270', Fe2='Fe5335', \
+                             verbose=True, indexMethod=0, lib=None):
     """
     Create an index grid using the V15 models.
     
@@ -709,7 +709,7 @@ def createAgeZAlphaIndexGrid(indices=None, ageRange=None, ZRange=None, exactIMFs
     # calc indices
     vals={}
     for ind in airInds.names:
-        vals[ind]=lib.calcIndex(airInds[ind], disp=None, method=indexMethod, verbose=verbose)
+        vals[ind]=lib.calcIndex(airInds[ind], disp=None, method=indexMethod, verbose=False)
 
     if calcMgFe:
         # calc meanFe and MgFe index

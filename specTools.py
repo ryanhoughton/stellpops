@@ -1277,7 +1277,7 @@ class spectrum:
                           NOT anything to do with velocity dispersion !!!
             round_prec: precision for rounding wavelengths (Method=4)
             Method: Specify the index calculation method
-                    0 = Simple method using means (no variance weighting)
+                    0 = Traditional/Simple method using means (no variance weighting)
                     1 = Simple method using median (no variance weighting)
                     3 = Linear fit, no variance weighting
                     4 = Full inverse varaince weighting and propagation of errors (Cenarro 2001)
