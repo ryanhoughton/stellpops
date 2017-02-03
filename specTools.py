@@ -1142,7 +1142,7 @@ class spectrum:
         if reraster:
             # manually re-raster floglam because it might have different nlam to original spec
             self.floglam = np.array(self.floglam)
-            loglamDims = cp.deepcopy(self.originalDims)
+            loglamDims = list(cp.deepcopy(self.originalDims))
             loglamDims.extend([self.nloglam])
             self.floglam = self.floglam.reshape(loglamDims)
             self.reraster()
@@ -1377,8 +1377,12 @@ class spectrum:
         # save copied to object
         self.nflam = np.atleast_2d(singleOrList2Array(nfs))
         
-        if len(nefs)!=0: self.neflam = np.atleast_2d(singleOrList2Array(nefs))
-        if keepPoly: self.pfits = np.atleast_2d(singleOrList2Array(pfs))
+        if len(nefs)!=0:
+            self.neflam = np.atleast_2d(singleOrList2Array(nefs))
+            self.unrasteredAttrs.append('neflam')
+        if keepPoly:
+            self.pfits = np.atleast_2d(singleOrList2Array(pfs))
+            self.unrasteredAttrs.append('pfits')
         
         if overwrite:
             self.flam = self.nflam
