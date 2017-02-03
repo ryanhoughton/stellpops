@@ -8,9 +8,9 @@ from stellarpops.tools import CD12tools as CT
 
 c_light = 299792.458
 ################################################################################################################################################################
-def lnlike_CvD(theta, parameters):
+def lnlike_CvD(theta, parameters, plot=False):
 
-    galaxy, noise, velscale, goodpixels, vsyst, interp_funct, correction_interps, logLams, logLam_gal=parameters
+    galaxy, noise, velscale, goodpixels, vsyst, interp_funct, correction_interps, logLams, logLam_gal, fit_wavelengths=parameters
 
     # galaxy=galaxy[goodpixels]
     # noise=noise[goodpixels]
@@ -32,7 +32,7 @@ def lnlike_CvD(theta, parameters):
 
     template=make_model_CvD(theta, interp_funct, logLams)
 
-    # import matplotlib.pyplot as plt 
+    
     
     general_correction=get_correction(general_interp, logLams, np.arange(len(general_abundances)), general_abundances, age, Z)
     positive_only_correction=get_correction(positive_only_interp, logLams, np.arange(len(positive_abundances)), positive_abundances, age, Z)
@@ -51,7 +51,7 @@ def lnlike_CvD(theta, parameters):
 
     chisq=0
 
-    fit_ranges=np.array([[4000, 4700], [4700, 5300], [8000,  9100], [9600, 10150]])*(np.exp(vel/c_light))
+    fit_ranges=fit_wavelengths*(np.exp(vel/c_light))
 
     # plt.figure()
     # plt.plot(np.exp(logLam_gal), galaxy, c='k')
@@ -65,8 +65,33 @@ def lnlike_CvD(theta, parameters):
     # import pdb; pdb.set_trace()
 
   
+    if plot==True:
+        import matplotlib.pyplot as plt 
+        import matplotlib.gridspec as gridspec
+        import matplotlib.ticker as ticker
 
-    #
+        
+        #fig, axs=plt.subplots(nrows=2, ncols=2, figsize=(28, 20))
+        
+
+        gs_1 = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1])
+        gs_2 = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1])
+        gs_3 = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1])
+        gs_4 = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1])
+        
+
+        fig=plt.figure(figsize=(14, 10))
+        axs=np.empty((4, 2), dtype='object')
+        outer_grid=gridspec.GridSpec(2, 2)
+
+        for i in range(4):
+            inner_grid = gridspec.GridSpecFromSubplotSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1], subplot_spec=outer_grid[i//2, i%2], hspace=0.0)
+            axs[i, 0] = fig.add_subplot(inner_grid[0, :2])
+            axs[i, 1] = fig.add_subplot(inner_grid[1, :2], sharex=axs[i, 0])
+            plt.setp(axs[i, 0].get_xticklabels(), visible=False)
+
+
+
     for i, fit_range in enumerate(fit_ranges):
 
         #tmask=np.where((np.exp(logLams)>fit_range[0]) & (np.exp(logLams)<fit_range[1]))
@@ -76,14 +101,45 @@ def lnlike_CvD(theta, parameters):
         n=noise[gmask]
         t=temp[gmask]
 
-        morder=int(np.ceil(len(g)/20.0))
+        morder=5
         poly=fit_legendre_polys(g/t, morder)
 
 
         chisq+=np.sum((((g-t*poly)/n)**2))
 
-        # axs.flatten()[i].plot(np.exp(logLam_gal[gmask])/(np.exp(vel/c_light)), g, c='k')
-        # axs.flatten()[i].plot(np.exp(logLam_gal[gmask])/(np.exp(vel/c_light)), poly*t, c='r', linewidth=2.0)
+
+
+
+        if plot:
+            x=np.exp(logLam_gal[gmask])/(np.exp(vel/c_light))
+            axs[i, 0].plot(x, g, c='k', linewidth=1.5)
+            axs[i, 0].plot(x, poly*t, c='r', linewidth=2.0)
+            axs[i, 0].fill_between(x, g-n, g+n, facecolor='k', alpha=0.5)
+
+            axs[i, 1].plot(x, g-poly*t, c='k', linewidth=1.5)
+            axs[i, 1].axhline(0.0, linestyle='dashed', c='k')
+
+            
+            axs[i, 0].set_xlim([x.min(), x.max()])
+            axs[i, 1].set_ylim([-0.05, 0.05])
+
+            axs[i, 1].set_xlabel('Rest Wavelength (A)')
+            axs[i, 0].set_ylabel('Flux (Arbitrary Units)')
+
+            #Avoid the overlapping labels
+            axs[i, 0].yaxis.set_major_locator(ticker.MaxNLocator(prune='lower'))
+            axs[i, 1].yaxis.set_major_locator(ticker.MultipleLocator(0.02))
+
+      
+            
+            
+
+
+
+
+    if plot:
+        return -0.5*chisq, (fig, axs)
+
     return -0.5*chisq#, return_models, return_gals
 
 
@@ -718,6 +774,55 @@ def NGC1277_CVD_read_in_data_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.d
     ################################################################################################################################################################
 
 
+def NGC1277_CVD_read_in_data_MN(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.dat', c=299792.458):
+    ##############################################################################################################################################################
+
+    # Read in the central spectrum from CvD
+    #
+
+    import os
+    file=os.path.expanduser(file)
+    lamdas, flux, errors=np.genfromtxt(file, unpack=True)
+    #Redshift of NGC1277, used to get the initial velocity
+    z=0.017044
+
+    #The CvD data has a chip gap between 5625 and 7071 A. This screws up the fitting if you forget about it (obviously!).
+    #This 'gap' array is insterted into the normalised flux and error arrays, before we mask it out in the fitting.
+
+    flux_median=np.median(flux)
+
+    # flux/=flux_median
+    # errors/=flux_median
+ 
+    lower=4150
+    upper=lamdas.max()
+
+    assert (lower>=lamdas.min()) & (upper<=lamdas.max()), 'Lower and upper limits must be within the wavelength ranges of the data'
+
+    
+
+    lam_range_gal=np.array([lower, upper])
+    mask=np.where((lamdas>lower) & (lamdas<upper))
+
+    # print 'Lam Range Gal is {}'.format(lam_range_gal)
+
+    flux=flux[mask]
+    errors=errors[mask]
+
+
+    #Log rebin them
+    galaxy, logLam, velscale = util.log_rebin(lam_range_gal, flux)
+    noise, _, _=util.log_rebin(lam_range_gal, errors, velscale=velscale)   
+
+
+    #GoodPixels from pPXF
+    goodpixels = np.arange(len(galaxy)) 
+    
+
+    return galaxy, noise, velscale, goodpixels, lam_range_gal, logLam
+
+    ################################################################################################################################################################
+
 
 
 # def NGC1277_SWIFT_read_in_data(file='Data/SPV_NGC1277.dat'):
@@ -865,7 +970,7 @@ def NGC1277_CVD_read_in_data_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.d
 
 def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.dat', verbose=True):
 
-    
+    fit_wavelengths=np.array([[4000, 4700], [4700, 5500], [8000,  9100], [9600, 10150]])
     
 
     galaxy, noise, velscale, goodpixels, lam_range_gal, logLam_gal=NGC1277_CVD_read_in_data_CvD(file=file, c=c_light)
@@ -880,7 +985,26 @@ def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal], logLam_gal
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
+
+def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NGC1277_RAD0.00_PPXF_NEW.cxt', verbose=True):
+
+    fit_wavelengths=np.array([[4000, 4700], [4700, 5500], [5500, 6800], [8000,  8700]])
+    
+
+    galaxy, noise, velscale, goodpixels, lam_range_gal, logLam_gal=NGC1277_CVD_read_in_data_MN(file=file, c=c_light)
+
+
+    pad=500.0
+    lam_range_temp = [lam_range_gal[0]-pad, lam_range_gal[1]+pad]
+    linear_interp, logLam_template =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
+    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
+
+
+    dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
+
+
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
 
 
 ################################################################################
