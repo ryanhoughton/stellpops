@@ -498,7 +498,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
 
 
-    x=var_elem_spectra[elem].lam[t_mask]
+    x=var_elem_spectra['Solar'].lam[t_mask]
     y=var_elem_spectra['Solar'].flam[-1, -1, t_mask]
     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
     new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
