@@ -12,9 +12,6 @@ def lnlike_CvD(theta, parameters, plot=False):
 
     galaxy, noise, velscale, goodpixels, vsyst, interp_funct, correction_interps, logLams, logLam_gal, fit_wavelengths=parameters
 
-    # galaxy=galaxy[goodpixels]
-    # noise=noise[goodpixels]
-
     general_interp, na_interp, positive_only_interp=correction_interps
 
     vel, sigma=theta[0], theta[1]
@@ -24,11 +21,6 @@ def lnlike_CvD(theta, parameters, plot=False):
     positive_abundances=theta[10:19]
     age, Z, imf=theta[19:]  
     
-
-    #8920], [9630,
-    
-    # return_models=np.array((len(mask, len(fit_ranges))))
-    # return_gals=np.array((len(mask, len(fit_ranges))))
 
     template=make_model_CvD(theta, interp_funct, logLams)
 
@@ -53,26 +45,11 @@ def lnlike_CvD(theta, parameters, plot=False):
 
     fit_ranges=fit_wavelengths*(np.exp(vel/c_light))
 
-    # plt.figure()
-    # plt.plot(np.exp(logLam_gal), galaxy, c='k')
-    # plt.plot(np.exp(logLam_gal)/(np.exp(vel/c_light)), galaxy, c='r')
-
-
-    # plt.figure()
-    # plt.plot(np.exp(logLam_gal), galaxy, c='k')
-    # plt.plot(np.exp(logLams), template, c='r')
-
-    # import pdb; pdb.set_trace()
-
   
     if plot==True:
         import matplotlib.pyplot as plt 
         import matplotlib.gridspec as gridspec
-        import matplotlib.ticker as ticker
-
-        
-        #fig, axs=plt.subplots(nrows=2, ncols=2, figsize=(28, 20))
-        
+        import matplotlib.ticker as ticker   
 
         gs_1 = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1])
         gs_2 = gridspec.GridSpec(2, 2, width_ratios=[1, 1], height_ratios=[2, 1])
@@ -450,15 +427,14 @@ def prepare_CvD2_templates(templates_lam_range, velscale, verbose=True):
 
     y=x35[t_mask]
     x=temp_lamdas[t_mask]
-    new_x=np.linspace(temp_lamdas[t_mask][0], temp_lamdas[t_mask][-1], len(temp_lamdas[t_mask]))
-
+    #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+    new_x=temp_lamdas[t_mask][0]+0.9*(np.arange(np.ceil((temp_lamdas[t_mask][-1]-temp_lamdas[t_mask][0])/0.9))+1)
     interp=si.interp1d(x, y, fill_value='extrapolate')
     out=interp(new_x)
 
-    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, x35[t_mask], velscale=velscale)
+    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, out, velscale=velscale)
     templates=np.empty((len(sspNew), n_ages, n_zs, n_imfs))
 
-    import matplotlib.pyplot as plt
 
 
     for a, Z in enumerate(Zs):    
@@ -472,7 +448,8 @@ def prepare_CvD2_templates(templates_lam_range, velscale, verbose=True):
                 #Interpolate templates onto a uniform wavelength grid and then log-rebin
                 y=data[:, counter][t_mask]   
                 x=temp_lamdas[t_mask]
-                new_x=np.linspace(temp_lamdas[t_mask][0], temp_lamdas[t_mask][-1], len(temp_lamdas[t_mask]))
+                #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+                new_x=temp_lamdas[t_mask][0]+0.9*(np.arange(np.ceil((temp_lamdas[t_mask][-1]-temp_lamdas[t_mask][0])/0.9))+1)
 
                 interp=si.interp1d(x, y, fill_value='extrapolate')
                 out=interp(new_x)
@@ -521,9 +498,15 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
 
 
+    x=var_elem_spectra[elem].lam[t_mask]
+    y=var_elem_spectra['Solar'].flam[-1, -1, t_mask]
+    #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+    new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+    interp=si.interp1d(x, y, fill_value='extrapolate')
+    data=interp(new_x)
 
 
-    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, var_elem_spectra['Solar'].flam[-1, -1, t_mask], velscale=velscale)
+    sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
     print 'SSP New is {}'.format(len(sspNew))
 
@@ -541,9 +524,17 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                 for d, _ in enumerate(Zs):
 
                     if step !=0.0:
-                        data=(var_elem_spectra[elem].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+                        y=(var_elem_spectra[elem].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+
+
                     else:
-                        data=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                        y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+
+                    x=var_elem_spectra[elem].lam[t_mask]
+                    #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+                    new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+                    interp=si.interp1d(x, y, fill_value='extrapolate')
+                    data=interp(new_x)
                             
                     sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
@@ -564,11 +555,15 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                         step=np.abs(step)
 
                     if step !=0.0:
-                        data=(var_elem_spectra[e].flam[c, d, t_mask]/var_elem_spectra['Solar'].flam[c, d, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+                        y=(var_elem_spectra[e].flam[c, d, t_mask]/var_elem_spectra['Solar'].flam[c, d, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
                     else:
-                        data=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                        y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
 
-
+                    x=var_elem_spectra[elem].lam[t_mask]
+                    #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+                    new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+                    interp=si.interp1d(x, y, fill_value='extrapolate')
+                    data=interp(new_x)
                             
                     sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
@@ -598,11 +593,18 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
 
 
                 if step !=0.0:
-                    data=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(base_enhancement)-1.0))
+                    y=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(base_enhancement)-1.0))
 
                 else:
 
-                    data=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                    y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+
+
+                x=var_elem_spectra[elem].lam[t_mask]
+                #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+                new_x=var_elem_spectra[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[t_mask][-1]-var_elem_spectra[t_mask][0])/0.9))+1)
+                interp=si.interp1d(x, y, fill_value='extrapolate')
+                data=interp(new_x)
                     
                 sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
