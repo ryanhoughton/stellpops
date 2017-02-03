@@ -684,7 +684,7 @@ def showMinML(imf, minAge=None, maxAge=None, minZ=None, maxZ=None, alpha=0.4):
 
 def createAgeZAlphaIndexGrid(indices=None, ageRange=None, ZRange=None, exactIMFs=None, exactAlphas=None, isochrone='BaSTI', IMFtype='un', \
                              sigma=None, atLickRes=False, calcMgFe=True, Fe1='Fe5270', Fe2='Fe5335', \
-                             verbose=True, indexMethod=0, lib=None):
+                             normSpec=None, verbose=True, indexMethod=0, lib=None):
     """
     Create an index grid using the V15 models.
     
@@ -700,6 +700,12 @@ def createAgeZAlphaIndexGrid(indices=None, ageRange=None, ZRange=None, exactIMFs
 
     # load AIR indices
     airInds = it.loadLickIndicesAir(atLickRes=atLickRes)
+
+    # norm continuum
+    if normSpec is not None:
+        assert type(normSpec)==int, "normSpec is not an integer; it should refer to mx num of polynomial coeffs"
+        lib.normaliseSpec(polyOrder=normSpec, indLib=airInds)
+    
     if indices is not None:
         airInds = airInds.subset(indices)
         

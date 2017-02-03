@@ -2547,13 +2547,18 @@ def normaliseSpec(lam, flam, eflam=None, polyOrder=3, indLib=None, maxErrVal=999
         if eflam is not None: efit=efit[keep]
 
     # fit poly
-    if eflam is not None:
-        coef = cheby.chebfit(xfit, yfit, deg=polyOrder, w=1.0/efit**2.0) # variance weight poly fit
+    if polyOrder>=0:
+        if eflam is not None:
+            coef = cheby.chebfit(xfit, yfit, deg=polyOrder, w=1.0/efit**2.0) # variance weight poly fit
+        else:
+            coef = cheby.chebfit(xfit, yfit, deg=polyOrder)
+        polyFit = cheby.chebval(x,coef)
+    elif polyOrder==-1:
+        # use median - for use in stacking, to maintain continuum shape
+        polyFit = np.ones_like(x) * np.median(yfit)
     else:
-        coef = cheby.chebfit(xfit, yfit, deg=polyOrder)
-
-    polyFit = cheby.chebval(x,coef)
-
+        raise ValueError, "polyOrder not understood: -1 (median), or >=0 for true polynomial fit"
+        
     # normalise 
     nflam=flam/polyFit
 
