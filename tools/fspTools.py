@@ -78,7 +78,7 @@ def lnlike_CvD(theta, parameters, plot=False):
         n=noise[gmask]
         t=temp[gmask]
 
-        morder=5
+        morder=int((fit_range[1]-fit_range[0])/100)
         poly=fit_legendre_polys(g/t, morder)
 
 
@@ -90,22 +90,23 @@ def lnlike_CvD(theta, parameters, plot=False):
         if plot:
             x=np.exp(logLam_gal[gmask])/(np.exp(vel/c_light))
             axs[i, 0].plot(x, g, c='k', linewidth=1.5)
-            axs[i, 0].plot(x, poly*t, c='r', linewidth=2.0)
-            axs[i, 0].fill_between(x, g-n, g+n, facecolor='k', alpha=0.5)
+            axs[i, 0].plot(x, poly*t, c='b', linewidth=2.0)
+            axs[i, 0].fill_between(x, g-n, g+n, facecolor='k', alpha=0.3)
 
-            axs[i, 1].plot(x, g-poly*t, c='k', linewidth=1.5)
+            axs[i, 1].plot(x, 100*(g-poly*t)/(poly*t), c='k', linewidth=1.5)
             axs[i, 1].axhline(0.0, linestyle='dashed', c='k')
 
             
             axs[i, 0].set_xlim([x.min(), x.max()])
-            axs[i, 1].set_ylim([-0.05, 0.05])
+            axs[i, 1].set_ylim([-5, 5])
 
             axs[i, 1].set_xlabel('Rest Wavelength (A)')
             axs[i, 0].set_ylabel('Flux (Arbitrary Units)')
+            axs[i, 1].set_ylabel('Residuals (%)')
 
             #Avoid the overlapping labels
             axs[i, 0].yaxis.set_major_locator(ticker.MaxNLocator(prune='lower'))
-            axs[i, 1].yaxis.set_major_locator(ticker.MultipleLocator(0.02))
+            axs[i, 1].yaxis.set_major_locator(ticker.MultipleLocator(2))
 
       
             
