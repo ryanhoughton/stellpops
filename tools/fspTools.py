@@ -4,9 +4,10 @@ from ppxf import ppxf_util as util
 from astropy.io import fits
 import scipy.interpolate as si
 from stellarpops.tools import CD12tools as CT
+import scipy.constants as const
 
-
-c_light = 299792.458
+#Speed of light in km/s
+c_light = const.c/1000.0
 ################################################################################################################################################################
 def lnlike_CvD(theta, parameters, plot=False):
 
@@ -22,7 +23,7 @@ def lnlike_CvD(theta, parameters, plot=False):
     age, Z, imf=theta[19:]  
     
 
-    template=make_model_CvD(theta, interp_funct, logLams)
+    base_template=make_model_CvD(theta, interp_funct, logLams)
 
     
     
@@ -30,8 +31,8 @@ def lnlike_CvD(theta, parameters, plot=False):
     positive_only_correction=get_correction(positive_only_interp, logLams, np.arange(len(positive_abundances)), positive_abundances, age, Z)
     na_correction=na_interp((Na_abundance, age, Z, logLams))
 
-
-    template=template*general_correction*positive_only_correction*na_correction
+    #old_template=template*general_correction*positive_only_correction*na_correction
+    template=np.exp(np.log(base_template)+general_correction+positive_only_correction+na_correction)
 
 
 
@@ -39,13 +40,11 @@ def lnlike_CvD(theta, parameters, plot=False):
 
     temp=convolve_template_with_losvd(template, vel, sigma, velscale=velscale, vsyst=vsyst)[:len(galaxy)]
 
-
-
     chisq=0
 
     fit_ranges=fit_wavelengths*(np.exp(vel/c_light))
 
-  
+    #Do all the plotting, if required
     if plot==True:
         import matplotlib.pyplot as plt 
         import matplotlib.gridspec as gridspec
@@ -186,7 +185,7 @@ def get_correction(interpolator, logLams, elems, abunds, age, Z):
     #reshape everything to be (len(indices), len(elements))
     result = out_array.reshape(*points[0].shape)
 
-    return np.prod(result, axis=0)
+    return np.sum(result, axis=0)
 
 
 
@@ -337,7 +336,7 @@ def gaussian(vel, sigma, velscale, npad, h3h4=None):
 
     losvd = np.exp(-0.5*w2)/np.sum(np.exp(-0.5*w2)) * poly 
     
-    #import pdb; pdb.set_trace()
+
     #npad = int(2**np.ceil(np.log2(nf)))
     
     nv=int(nv)
@@ -525,11 +524,11 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                 for d, _ in enumerate(Zs):
 
                     if step !=0.0:
-                        y=(var_elem_spectra[elem].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+                        y=(var_elem_spectra[elem].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask] - 1.0)*((10**(step)-1.0)/(10**(0.3)-1.0))
 
 
                     else:
-                        y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                        y=np.zeros_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
 
                     x=var_elem_spectra[elem].lam[t_mask]
                     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
@@ -539,8 +538,11 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                             
                     sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
-                    positive_only_templates[a, b, c, d, :]=sspNew/np.median(sspNew)
+                    positive_only_templates[a, b, c, d, :]=sspNew#/np.median(sspNew)
 
+
+    # import matplotlib.pyplot as plt
+    # plt.figure()
 
     #Do the general templates
     for a, elem in enumerate(normal_elems):
@@ -551,14 +553,15 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
 
                     if step>0.0:
                         e='{}+'.format(elem)
+                        gen_step=step
                     elif step<0.0:
                         e='{}-'.format(elem)
-                        step=np.abs(step)
+                        gen_step=np.abs(step)
 
                     if step !=0.0:
-                        y=(var_elem_spectra[e].flam[c, d, t_mask]/var_elem_spectra['Solar'].flam[c, d, t_mask])*((10**(step)-1.0)/(10**(0.3)-1.0))
+                        y=(var_elem_spectra[e].flam[c, d, t_mask]/var_elem_spectra['Solar'].flam[c, d, t_mask]-1)*((10**(gen_step)-1.0)/(10**(0.3)-1.0))
                     else:
-                        y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                        y=np.zeros_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
 
                     x=var_elem_spectra[e].lam[t_mask]
                     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
@@ -568,8 +571,12 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                             
                     sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
-                    general_templates[a, b, c, d, :]=sspNew/np.median(sspNew)
+                    general_templates[a, b, c, d, :]=sspNew#/np.median(sspNew)
 
+        #     plt.plot(sspNew, label='{} {}'.format(e, step))
+
+        # plt.legend()
+        # import pdb; pdb.set_trace()
 
 
     #Do the Na templates:
@@ -577,28 +584,30 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     for a, step in enumerate(Na_elem_steps):
         for b, _ in enumerate(ages):
             for c, _ in enumerate(Zs):
-                
+
                 if step <0.0:
                     e='Na-'
                     base_enhancement=0.3
-                    step=np.abs(step)                    
+                    Na_step=np.abs(step)                    
                 elif 0.0<=step<0.45:
                     e='Na+'
                     base_enhancement=0.3
+                    Na_step=step
                 elif 0.45<=step<0.75:
                     e='Na+0.6'
                     base_enhancement=0.6
+                    Na_step=step
                 elif 0.75<=step<1.0:
                     e='Na+0.9'
                     base_enhancement=0.9
-
-
+                    Na_step=step
+                
                 if step !=0.0:
-                    y=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask])*((10**(step)-1.0)/(10**(base_enhancement)-1.0))
+                    y=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask]-1)*((10**(Na_step)-1.0)/(10**(base_enhancement)-1.0))
 
                 else:
 
-                    y=np.ones_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+                    y=np.zeros_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
 
 
                 x=var_elem_spectra[e].lam[t_mask]
@@ -608,8 +617,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
                 data=interp(new_x)
                     
                 sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
-
-                na_templates[a, b, c, :]=sspNew/np.median(sspNew)
+                na_templates[a, b, c, :]=sspNew
 
 
 
@@ -654,10 +662,12 @@ def prepare_CvD_correction_interpolators(templates_lam_range, velscale, verbose=
     Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
 
+    np.save('na_templates.npy', na_templates)
+    np.save('general_templates.npy', general_templates)
 
-    general_interp=si.RegularGridInterpolator(((np.arange(len(normal_elems)), elem_steps, ages, Zs, logLam_template)), general_templates, bounds_error=False, fill_value=None)
-    na_interp=si.RegularGridInterpolator(((Na_elem_steps, ages, Zs, logLam_template)), na_templates, bounds_error=False, fill_value=None)
-    positive_only_interp=si.RegularGridInterpolator(((np.arange(len(positive_only_elems)), positive_only_elem_steps, ages, Zs, logLam_template)), positive_only_templates, bounds_error=False, fill_value=None)
+    general_interp=si.RegularGridInterpolator(((np.arange(len(normal_elems)), elem_steps, ages, Zs, logLam_template)), general_templates, bounds_error=False, fill_value=None, method='linear')
+    na_interp=si.RegularGridInterpolator(((Na_elem_steps, ages, Zs, logLam_template)), na_templates, bounds_error=False, fill_value=None, method='linear')
+    positive_only_interp=si.RegularGridInterpolator(((np.arange(len(positive_only_elems)), positive_only_elem_steps, ages, Zs, logLam_template)), positive_only_templates, bounds_error=False, fill_value=None, method='linear')
 
     correction_interps=[general_interp, na_interp, positive_only_interp]
 
