@@ -837,7 +837,56 @@ def NGC1277_CVD_read_in_data_MN(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.da
     ################################################################################################################################################################
 
 
+def NGC1277_CVD_read_in_data_SPV(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.dat', c=299792.458):
+    ##############################################################################################################################################################
 
+    # Read in the central spectrum from CvD
+    #
+
+    import os
+    file=os.path.expanduser(file)
+    lamdas, flux, variance, inst_res=np.genfromtxt(file, unpack=True)
+    #Redshift of NGC1277, used to get the initial velocity
+    z=0.017044
+    errors=np.sqrt(variance)
+    lamdas*=10**4
+
+    #The CvD data has a chip gap between 5625 and 7071 A. This screws up the fitting if you forget about it (obviously!).
+    #This 'gap' array is insterted into the normalised flux and error arrays, before we mask it out in the fitting.
+
+    flux_median=np.median(flux)
+
+    # flux/=flux_median
+    # errors/=flux_median
+ 
+    lower=lamdas.min()
+    upper=lamdas.max()
+
+    assert (lower>=lamdas.min()) & (upper<=lamdas.max()), 'Lower and upper limits must be within the wavelength ranges of the data'
+
+    
+
+    lam_range_gal=np.array([lower, upper])
+    mask=np.where((lamdas>lower) & (lamdas<upper))
+
+    # print 'Lam Range Gal is {}'.format(lam_range_gal)
+
+    flux=flux[mask]
+    errors=errors[mask]
+
+
+    #Log rebin them
+    galaxy, logLam, velscale = util.log_rebin(lam_range_gal, flux)
+    noise, _, _=util.log_rebin(lam_range_gal, errors, velscale=velscale)   
+
+
+    #GoodPixels from pPXF
+    goodpixels = np.arange(len(galaxy)) 
+    
+
+    return galaxy, noise, velscale, goodpixels, lam_range_gal, logLam
+
+#     ################################################################################################################################################################
 # def NGC1277_SWIFT_read_in_data(file='Data/SPV_NGC1277.dat'):
 
 #     lamdas, flux, variance, inst_res=np.genfromtxt(file, unpack=True)
@@ -1010,6 +1059,31 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
 
     pad=500.0
     lam_range_temp = [lam_range_gal[0]-pad, lam_range_gal[1]+pad]
+    linear_interp, logLam_template =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
+    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
+
+
+    dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
+
+
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
+
+
+################################################################################
+
+
+def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/SPV_NGC1277.dat', verbose=True):
+
+    fit_wavelengths=np.array([[6300, 10412]])
+    
+
+    galaxy, noise, velscale, goodpixels, lam_range_gal, logLam_gal=NGC1277_CVD_read_in_data_SPV(file=file, c=c_light)
+
+
+    pad=500.0
+    lam_range_temp = [lam_range_gal[0]-pad, lam_range_gal[1]+pad]
+
+    
     linear_interp, logLam_template =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
     correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
 
