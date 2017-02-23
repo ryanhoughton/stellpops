@@ -468,6 +468,107 @@ def fe_enhanced_spec(specs, index, out_sigma, cvd_dir='/Data/stellarpops/CvD1.2'
 
     return newspec
 
+def element_enhanced_spec(specs, index, out_sigma, cvd_dir='/Data/stellarpops/CvD1.2', element, enhancement=0.3, verbose=True):
+
+    import CvD12tools as cvd
+
+    if element=='Na':
+        element_index=1
+
+
+    cvd13 = cvd.loadCvD12spec('{}/t13.5_solar.ssp'.format(cvd_dir))
+    cvdvar = cvd.loadCvD12spec('{}/t13.5_varelem.ssp'.format(cvd_dir))
+
+    CvDlam=cvd13.lam
+    fefac = (cvdvar.flam[element_index]/cvd13.flam[3]-1)*((10**(enhancement)-1.0)/(10**(0.3)-1.0))
+
+    fefac=s.vac2air(fefac)
+
+    if verbose:
+        print "Created fefac: shape is {}".format(fefac.shape)
+
+    #CvD spectra have a spectral resolution of ~2000
+    #This is a sigma of ~63km/s
+
+    #Miles models have a FWHM of 2.5A below 8950A, 60km/s above it.
+    #60km/s is a resolving power of 2121: R=c/sigma*sqrt(8ln2)=2121
+    #At NaI, FWHM of 2.5A is a sigma of 38.9km/s, or R=3276
+
+    
+    #Need to discuss- but will not convolve either model above 8950A for the moment
+    #Below, I'll convolve MILES up to a sigma of 63 km/s
+    #should test whether this makes a difference!
+
+    if index['red_stop']<8950.0:
+
+        if verbose:
+            print "Index is below 8950A. Need to convolve MILES up to CvD resolution"
+
+        #Convolve the Miles models up to the CvD resolution
+        CvD_sigma=63.0
+        if index['nfeat']>0.0:
+            model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['ind_start'][0]*1000.0)            
+        else:
+            model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['cont_stop'][0]*1000.0)
+
+        assert CvD_sigma > model_sigma, 'Cant convolve to a resolution below the model resolution'
+        conv_sigma=np.sqrt(CvD_sigma**2-model_sigma**2)
+
+        MILES_at_CvD_res=s.cutAndGaussVelConvolve(specs, index, conv_sigma, n_sig=30.0)
+
+        if verbose:
+
+            print "Made MILES spec at CvD resolution. Shape is {}".format(MILES_at_CvD_res.flam.shape)
+
+
+    else:
+        MILES_at_CvD_res=specs.copy()
+
+
+    #Cut Miles specs to finish at the same lamda as the CvD specs
+    MILES_at_CvD_res.clipSpectralRange(MILES_at_CvD_res.lam[0], CvDlam[-1])
+
+    if verbose:
+        print "Clipped the MILES spectra to end at 2.4um. Shape is {}".format(MILES_at_CvD_res.flam.shape)
+
+    #Clip CvDspecs to start and stop at the same lamda as the (clipped or not clipped) MILES ones
+    lamda_mask=np.where((CvDlam>MILES_at_CvD_res.lam[0]) & (CvDlam<MILES_at_CvD_res.lam[-1]))[0]
+    fefac=fefac[lamda_mask]
+
+    #interpolate MILES and CvD onto the same wavelength grid
+    fefac_interp=si.interp1d(CvDlam[lamda_mask], fefac, fill_value='extrapolate')
+    correction=fefac_interp(MILES_at_CvD_res.lam) 
+
+    if verbose:
+        print "Interpolated Miles and CvD to lie on the same wavelength array"  
+
+    newspec=s.spectrum(lam=MILES_at_CvD_res.lam, lamspec=np.exp(np.log(MILES_at_CvD_res.flam)+correction), wavesyst='air')
+    if verbose:
+        print "Made new spectrum"
+    # if index['name']=='TiO89' and specs.IMF=='bi1.30':
+    #     import matplotlib.pyplot as plt
+    #     plt.clf()
+    #     plt.figure()
+    #     import pdb; pdb.set_trace()
+    """
+    for i, flam in enumerate(MILES_at_CvD_res.flam.reshape(-1, MILES_at_CvD_res.flam.shape[-1])):
+
+        assert len(flam)==len(correction), "Lengths of arrays aren't equal!"
+        # import pdb; pdb.set_trace()
+        # import matplotlib.pyplot as plt
+        # plt.figure()
+        # plt.plot(MILES_at_CvD_res.lam, flam, c='k')
+        flam=np.exp(np.log(flam)+correction)
+        # plt.plot(MILES_at_CvD_res.lam, flam, c='r')
+        # plt.show()
+        # import pdb; pdb.set_trace()
+
+
+        if verbose:
+            print "Applied Correction to spec {} of {}".format(i, MILES_at_CvD_res.flam.reshape(-1, MILES_at_CvD_res.flam.shape[-1]).shape[0])
+    """
+
+    return newspec
 
 def fe_corrected_index(specs, index, out_sigma, cvd_dir='/Data/stellarpops/CvD1.2', Fe=0.3, verbose=True):
 

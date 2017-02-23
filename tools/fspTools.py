@@ -470,7 +470,7 @@ def prepare_CvD2_templates(templates_lam_range, velscale, verbose=True):
     return templates, logLam_template
 
 
-def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
+def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verbose=True):
 
     import glob
 
@@ -489,9 +489,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     t_mask = ((temp_lamdas > templates_lam_range[0]) & (temp_lamdas <templates_lam_range[1]))
 
 
-    positive_only_elems=['Cr+', 'Ni+', 'Co+', 'Eu+', 'Sr+', 'K+', 'V+', 'Cu+', 'as/Fe+']
-    Na_elem=['Na']
-    normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+    positive_only_elems, Na_elem, normal_elems=elements
 
     elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.45]
     Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -515,10 +513,10 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
     
     na_templates=np.empty((len(Na_elem_steps), n_ages, n_Zs, len(sspNew)))
 
-    print 'Making the Positive-Only corection templates'
+    print 'Making the Positive-Only Correction templates'
     #Do the positve only correction templates:
     for a, elem in enumerate(positive_only_elems):
-        print elem
+        print '\t{}'.format(elem)
         for b, step in enumerate(positive_only_elem_steps):
             for c, _ in enumerate(ages):
                 for d, _ in enumerate(Zs):
@@ -546,7 +544,8 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
 
     #Do the general templates
     for a, elem in enumerate(normal_elems):
-        print elem
+        print 'Making the General Correction templates'
+        print '\t{}'.format(elem)
         for b, step in enumerate(elem_steps):
             for c, _ in enumerate(ages):
                 for d, _ in enumerate(Zs):
@@ -580,7 +579,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=True):
 
 
     #Do the Na templates:
-    print 'Na'
+    print 'Making the Na Correction template'
     for a, step in enumerate(Na_elem_steps):
         for b, _ in enumerate(ages):
             for c, _ in enumerate(Zs):
@@ -644,19 +643,17 @@ def prepare_CvD_interpolator(templates_lam_range, velscale, verbose=True):
 ################################################################################################################################################################
 
 ################################################################################################################################################################
-def prepare_CvD_correction_interpolators(templates_lam_range, velscale, verbose=True):
+def prepare_CvD_correction_interpolators(templates_lam_range, velscale, elements, verbose=True):
 
-    all_corrections, logLam_template=prepare_CvD2_element_templates(templates_lam_range, velscale, verbose=verbose)
+    all_corrections, logLam_template=prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verbose=verbose)
 
     general_templates, na_templates, positive_only_templates=all_corrections
 
-
+    positive_only_elems, Na_elem, normal_elems=elements
 
     ages=np.array([  1.,   3.,   5.,   9.,  13.])
     Zs=[-1.5, -1.0, -0.5, 0.0, 0.2]
-    positive_only_elems=['Cr+', 'Ni+', 'Co+', 'Eu+', 'Sr+', 'K+', 'V+', 'Cu+', 'as/Fe+']
-    Na_elem=['Na']
-    normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+
 
     elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.45]
     Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
@@ -1032,6 +1029,14 @@ def NGC1277_CVD_read_in_data_SPV(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.d
 
 def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.dat', verbose=True):
 
+    #positive_only_elems=['Cr+', 'Ni+', 'Co+', 'Eu+', 'Sr+', 'K+', 'V+', 'Cu+', 'as/Fe+']
+    positive_only_elems=['as/Fe+']
+    Na_elem=['Na']
+    #normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg']
+    normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+
+    elements=(positive_only_elems, Na_elem, normal_elems)
+
     fit_wavelengths=np.array([[4000, 4700], [4700, 5500], [8000,  9100], [9600, 10150]])
     
 
@@ -1041,7 +1046,7 @@ def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n
     pad=500.0
     lam_range_temp = [lam_range_gal[0]-pad, lam_range_gal[1]+pad]
     linear_interp, logLam_template =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
-    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
+    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, elements, verbose=True)
 
 
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
@@ -1050,6 +1055,14 @@ def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n
     return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
 
 def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NGC1277_RAD0.00_PPXF_NEW.cxt', verbose=True):
+
+    #positive_only_elems=['Cr+', 'Ni+', 'Co+', 'Eu+', 'Sr+', 'K+', 'V+', 'Cu+', 'as/Fe+']
+    positive_only_elems=['as/Fe+']
+    Na_elem=['Na']
+    #normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg']
+    normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+
+    elements=(positive_only_elems, Na_elem, normal_elems)
 
     fit_wavelengths=np.array([[4000, 4700], [4700, 5500], [5500, 6800], [8000,  8700]])
     
@@ -1060,7 +1073,7 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
     pad=500.0
     lam_range_temp = [lam_range_gal[0]-pad, lam_range_gal[1]+pad]
     linear_interp, logLam_template =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
-    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
+    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, elements, verbose=True)
 
 
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
@@ -1075,6 +1088,12 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
 def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/SPV_NGC1277.dat', verbose=True):
 
     fit_wavelengths=np.array([[6300, 10412]])
+
+    positive_only_elems=['as/Fe+']
+    Na_elem=['Na']
+    normal_elems=['Ca', 'Fe', 'Ti', 'Mg']
+
+    elements=(positive_only_elems, Na_elem, normal_elems)
     
 
     galaxy, noise, velscale, goodpixels, lam_range_gal, logLam_gal=NGC1277_CVD_read_in_data_SPV(file=file, c=c_light)
@@ -1085,7 +1104,7 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
 
     
     linear_interp, logLam_template =prepare_CvD_interpolator(lam_range_temp, velscale, verbose=True)
-    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, verbose=True)
+    correction_interps, logLam_template=prepare_CvD_correction_interpolators(lam_range_temp, velscale, elements, verbose=True)
 
 
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
