@@ -16,19 +16,26 @@ def lnlike_CvD(theta, parameters, plot=False):
     general_interp, na_interp, positive_only_interp=correction_interps
 
     vel, sigma=theta[0], theta[1]
-
     Na_abundance=theta[2]
-    general_abundances=theta[3:10]
-    positive_abundances=theta[10:19]
-    age, Z, imf=theta[19:]  
+    general_abundances=theta[3:-4]
+    positive_abundances=theta[-4]
+    age, Z, imf=theta[-3:]
     
 
     base_template=make_model_CvD(theta, interp_funct, logLams)
 
-    
-    
-    general_correction=get_correction(general_interp, logLams, np.arange(len(general_abundances)), general_abundances, age, Z)
-    positive_only_correction=get_correction(positive_only_interp, logLams, np.arange(len(positive_abundances)), positive_abundances, age, Z)
+
+    #If positive abundances has only one element, run it as a usual interpoaltor without going through the get correction function
+    #Lists are iterables wheres single floats are not, so this check will pass for floats but not arrays or lists
+    if not hasattr(positive_abundances,'__iter__'):
+        positive_only_correction=positive_only_interp((positive_abundances, age, Z, logLams))
+    else:
+        positive_only_correction=get_correction(positive_only_interp, logLams, np.arange(len(positive_abundances)), positive_abundances, age, Z)
+
+
+
+    general_correction=get_correction(general_interp, logLams, np.arange(len(general_abundances)), general_abundances, age, Z)   
+
     na_correction=na_interp((Na_abundance, age, Z, logLams))
 
     #old_template=template*general_correction*positive_only_correction*na_correction
@@ -133,11 +140,12 @@ def lnprob_CvD(theta, parameters):
 
 def lnprior_CvD(theta):
 
+
     vel, sigma=theta[0], theta[1]
     Na_abundance=theta[2]
-    general_abundances=theta[3:10]
-    positive_abundances=theta[10:19]
-    age, Z, imf=theta[19:]
+    general_abundances=theta[3:-4]
+    positive_abundances=theta[-4]
+    age, Z, imf=theta[-3:]
 
     if 0.0 < vel < 7000.0 and 0.0 < sigma < 1000.0:
 
@@ -151,10 +159,11 @@ def lnprior_CvD(theta):
 
 def make_model_CvD(theta, interp_funct, logLams):
 
+    vel, sigma=theta[0], theta[1]
     Na_abundance=theta[2]
-    general_abundances=theta[3:10]
-    positive_abundances=theta[10:19]
-    age, Z, imf=theta[19:]
+    general_abundances=theta[3:-4]
+    positive_abundances=theta[-4]
+    age, Z, imf=theta[-3:]
 
     model=interp_funct((logLams, age, Z, imf))
 
@@ -177,6 +186,8 @@ def get_correction(interpolator, logLams, elems, abunds, age, Z):
 
     #Get the correct abundance for each element- luckily we can index the abundance array by the integer element array
     abunds=abunds[points[0]]
+
+    # import pdb; pdb.set_trace()
 
     #Stack together
     xi=np.vstack((flat[0, :], abunds.ravel(), ages.ravel(), Zs.ravel(), flat[1, :]))
@@ -541,10 +552,10 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verb
 
     # import matplotlib.pyplot as plt
     # plt.figure()
-
+    print 'Making the General Correction templates'
     #Do the general templates
     for a, elem in enumerate(normal_elems):
-        print 'Making the General Correction templates'
+        
         print '\t{}'.format(elem)
         for b, step in enumerate(elem_steps):
             for c, _ in enumerate(ages):
@@ -651,6 +662,8 @@ def prepare_CvD_correction_interpolators(templates_lam_range, velscale, elements
 
     positive_only_elems, Na_elem, normal_elems=elements
 
+
+
     ages=np.array([  1.,   3.,   5.,   9.,  13.])
     Zs=[-1.5, -1.0, -0.5, 0.0, 0.2]
 
@@ -659,12 +672,20 @@ def prepare_CvD_correction_interpolators(templates_lam_range, velscale, elements
     Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
 
-    np.save('na_templates.npy', na_templates)
-    np.save('general_templates.npy', general_templates)
+    # np.save('na_templates.npy', na_templates)
+    # np.save('general_templates.npy', general_templates)
 
     general_interp=si.RegularGridInterpolator(((np.arange(len(normal_elems)), elem_steps, ages, Zs, logLam_template)), general_templates, bounds_error=False, fill_value=None, method='linear')
     na_interp=si.RegularGridInterpolator(((Na_elem_steps, ages, Zs, logLam_template)), na_templates, bounds_error=False, fill_value=None, method='linear')
-    positive_only_interp=si.RegularGridInterpolator(((np.arange(len(positive_only_elems)), positive_only_elem_steps, ages, Zs, logLam_template)), positive_only_templates, bounds_error=False, fill_value=None, method='linear')
+
+    #If we only have one positive element to check, we need to do something different- can't have a dimension with only one element in RegularGridInterpolator apparently.
+    if len(positive_only_elems)>1:
+        positive_only_interp=si.RegularGridInterpolator(((np.arange(len(positive_only_elems)), positive_only_elem_steps, ages, Zs, logLam_template)), positive_only_templates, bounds_error=False, fill_value=None, method='linear')
+    else:
+        positive_only_interp=si.RegularGridInterpolator((positive_only_elem_steps, ages, Zs, logLam_template), positive_only_templates[0, :], bounds_error=False, fill_value=None, method='linear')
+
+
+    #import pdb; pdb.set_trace()
 
     correction_interps=[general_interp, na_interp, positive_only_interp]
 
@@ -1035,6 +1056,8 @@ def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n
     #normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg']
     normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
 
+    assert len(positive_only_elems)==1, 'Need to change the code if you want more than 1 positive element!'
+
     elements=(positive_only_elems, Na_elem, normal_elems)
 
     fit_wavelengths=np.array([[4000, 4700], [4700, 5500], [8000,  9100], [9600, 10150]])
@@ -1051,8 +1074,11 @@ def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n
 
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
+    #ndim is number of elements plus V, Sigma plus age, IMF and Z
+    ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+2+3
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
+
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
 
 def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NGC1277_RAD0.00_PPXF_NEW.cxt', verbose=True):
 
@@ -1061,6 +1087,8 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
     Na_elem=['Na']
     #normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg']
     normal_elems=['Ca', 'Fe', 'C', 'N', 'Ti', 'Mg', 'Si']
+
+    assert len(positive_only_elems)==1, 'Need to change the code if you want more than 1 positive element!'
 
     elements=(positive_only_elems, Na_elem, normal_elems)
 
@@ -1078,8 +1106,11 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
 
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
+    #ndim is number of elements plus V, Sigma plus age, IMF and Z
+    ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+2+3
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
+
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
 
 
 ################################################################################
@@ -1089,9 +1120,11 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
 
     fit_wavelengths=np.array([[6300, 10412]])
 
-    positive_only_elems=['as/Fe+']
+    positive_only_elems=['as/Fe+']#, 'as/Fe+']
     Na_elem=['Na']
     normal_elems=['Ca', 'Fe', 'Ti', 'Mg']
+
+    #assert len(positive_only_elems)==1, 'Need to change the code if you want more than 1 positive element!'
 
     elements=(positive_only_elems, Na_elem, normal_elems)
     
@@ -1109,8 +1142,11 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
 
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
+    #ndim is number of elements plus V, Sigma plus age, IMF and Z
+    ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+2+3
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal
+
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
 
 
 ################################################################################
