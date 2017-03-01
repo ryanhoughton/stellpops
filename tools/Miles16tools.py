@@ -468,7 +468,7 @@ def fe_enhanced_spec(specs, index, out_sigma, cvd_dir='/Data/stellarpops/CvD1.2'
 
     return newspec
 
-def element_enhanced_spec(specs, index, out_sigma, cvd_dir='/Data/stellarpops/CvD1.2', element, enhancement=0.3, verbose=True):
+def element_enhanced_spec(specs, index, out_sigma, element, enhancement=0.3, cvd_dir='/Data/stellarpops/CvD1.2', verbose=True):
 
     import CvD12tools as cvd
 

@@ -17,10 +17,12 @@ def lnlike_CvD(theta, parameters, plot=False):
 
     vel, sigma=theta[0], theta[1]
     Na_abundance=theta[2]
-    general_abundances=theta[3:-4]
-    positive_abundances=theta[-4]
-    age, Z, imf=theta[-3:]
+    general_abundances=theta[3:-3]
+    positive_abundances=theta[-3]
+    Z, imf=theta[-2:]
     
+    #Don't fit age- keep it fixed at 13.5 Gyr
+    age=13.5
 
     base_template=make_model_CvD(theta, interp_funct, logLams)
 
@@ -143,13 +145,16 @@ def lnprior_CvD(theta):
 
     vel, sigma=theta[0], theta[1]
     Na_abundance=theta[2]
-    general_abundances=theta[3:-4]
-    positive_abundances=theta[-4]
-    age, Z, imf=theta[-3:]
+    general_abundances=theta[3:-3]
+    positive_abundances=theta[-3]
+    Z, imf=theta[-2:]
+    
+    #Don't fit age- keep it fixed at 13.5 Gyr
+    age=13.5
 
     if 0.0 < vel < 7000.0 and 0.0 < sigma < 1000.0:
 
-        if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age < 13.5 and -1.5 < Z < 0.4 and 0.0 < imf <3.5:
+        if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age <= 13.5 and -1.5 < Z < 0.4 and 0.0 < imf <3.5:
             return 0.0
 
     return -np.inf
@@ -161,9 +166,12 @@ def make_model_CvD(theta, interp_funct, logLams):
 
     vel, sigma=theta[0], theta[1]
     Na_abundance=theta[2]
-    general_abundances=theta[3:-4]
-    positive_abundances=theta[-4]
-    age, Z, imf=theta[-3:]
+    general_abundances=theta[3:-3]
+    positive_abundances=theta[-3]
+    Z, imf=theta[-2:]
+    
+    #Don't fit age- keep it fixed at 13.5 Gyr
+    age=13.5
 
     model=interp_funct((logLams, age, Z, imf))
 
@@ -1124,6 +1132,10 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
     Na_elem=['Na']
     normal_elems=['Ca', 'Fe', 'Ti', 'Mg']
 
+    #Try not fitting age, since we're not very sensitive to it in the SWIFT range.
+    population_params=['Z', 'IMF']
+    kinematic_parmas=['V', 'Sigma']
+
     #assert len(positive_only_elems)==1, 'Need to change the code if you want more than 1 positive element!'
 
     elements=(positive_only_elems, Na_elem, normal_elems)
@@ -1143,7 +1155,7 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
     dv = c_light*np.log(lam_range_temp[0]/lam_range_gal[0])  # km/s
 
     #ndim is number of elements plus V, Sigma plus age, IMF and Z
-    ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+2+3
+    ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+len(kinematic_parmas)+len(population_params)
 
 
     return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
