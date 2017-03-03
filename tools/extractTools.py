@@ -521,9 +521,12 @@ def make_fits_tables(cubepath, varcubepath, bin_text_file, outfilename, offset=N
 
     for j in range(n_spectra):
 
-        col1 = fits.Column(name='lamda', format='D', array=lamdas)
-        col2 = fits.Column(name='flux', format='D', array=spectra[:, j])
-        col3 = fits.Column(name='noise', format='D', array=noise_spectra[:, j])
+        #Chop off the first 50 pixels as they're usually bad
+        print 'REMOVING THE FIRST 50 PIXELS'
+
+        col1 = fits.Column(name='lamda', format='D', array=lamdas[50:])
+        col2 = fits.Column(name='flux', format='D', array=spectra[50:, j])
+        col3 = fits.Column(name='noise', format='D', array=noise_spectra[50:, j])
 
         cols = fits.ColDefs([col1, col2, col3])
 
@@ -549,7 +552,7 @@ def make_fits_tables(cubepath, varcubepath, bin_text_file, outfilename, offset=N
 
         newHDUlist.append(tbhdu)
 
-    fits.HDUList(newHDUlist).writeto(outfilename)
+    fits.HDUList(newHDUlist).writeto(outfilename, clobber=True)
 
 
 
