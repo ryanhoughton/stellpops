@@ -154,7 +154,7 @@ def lnprior_CvD(theta):
     #Don't fit age- keep it fixed at 13.5 Gyr
     age=13.5
 
-    if -1000.0 < vel < 7000.0 and 0.0 < sigma < 500.0:
+    if -1000.0 < vel < 10000.0 and 0.0 < sigma < 500.0:
 
         if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age <= 14.0 and -0.5 < Z < 0.4 and 0.5 < imf <3.5:
             return 0.0
