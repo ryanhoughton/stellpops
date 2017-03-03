@@ -428,6 +428,7 @@ def CvD_cut_and_measure_index(spec, index, out_sigma, index_type='Simple', model
     Use specTools to cut a long spectrum down to size and measure an index. CvD12v1.2 models have a resolving power of 2000
     """
 
+
     
     if out_sigma>0.0:
         if model_sigma is None: 
@@ -443,6 +444,7 @@ def CvD_cut_and_measure_index(spec, index, out_sigma, index_type='Simple', model
 
 
     cutspec=ST.cutAndGaussVelConvolve(spec, index, conv_sigma, verbose=False, fix_uneven_lamdas=True, n_sig=n_sig)
+
 
     if index_type=='Cenarro':
         indvals=ST.calcCenarroIndex(cutspec, index)

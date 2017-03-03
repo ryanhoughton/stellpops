@@ -79,6 +79,8 @@ def lnlike_CvD(theta, parameters, plot=False):
 
     for i, fit_range in enumerate(fit_ranges):
 
+
+
         #tmask=np.where((np.exp(logLams)>fit_range[0]) & (np.exp(logLams)<fit_range[1]))
         gmask=np.where((np.exp(logLam_gal)>fit_range[0]) & (np.exp(logLam_gal)<fit_range[1]))
     
@@ -152,9 +154,9 @@ def lnprior_CvD(theta):
     #Don't fit age- keep it fixed at 13.5 Gyr
     age=13.5
 
-    if 0.0 < vel < 7000.0 and 0.0 < sigma < 1000.0:
+    if 0.0 < vel < 7000.0 and 0.0 < sigma < 500.0:
 
-        if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age <= 13.5 and -1.5 < Z < 0.4 and 0.0 < imf <3.5:
+        if np.all(general_abundances>=-0.45) and np.all(general_abundances<=0.45)  and np.all(positive_abundances>=0.0) and np.all(positive_abundances<=0.45) and -0.45 <= Na_abundance <= 1.0 and 1.0 < age <= 14.0 and -0.5 < Z < 0.4 and 0.5 < imf <3.5:
             return 0.0
 
     return -np.inf
@@ -912,31 +914,7 @@ def NGC1277_CVD_read_in_data_SPV(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.d
 
     return galaxy, noise, velscale, goodpixels, lam_range_gal, logLam
 
-#     ################################################################################################################################################################
-# def NGC1277_SWIFT_read_in_data(file='Data/SPV_NGC1277.dat'):
 
-#     lamdas, flux, variance, inst_res=np.genfromtxt(file, unpack=True)
-
-#     flux_median=np.median(flux)
-#     errors=np.sqrt(variance)
-
-#     flux/=flux_median
-#     errors/=flux_median
-
-#     lamdas=lamdas*10**4
-
-#     lower=lamdas.min()
-#     upper=lamdas.max()
-
-#     lam_range_gal=np.array([lower, upper])
-
-#     galaxy, logLam, velscale = util.log_rebin(lam_range_gal, flux)
-#     noise, _, _=util.log_rebin(lam_range_gal, errors)  
-
-#     goodpixels = np.arange(len(galaxy))
-
-
-#     return galaxy, noise, velscale, goodpixels, lam_range_gal, logLam
 
 
 # def NGC1277_CVD_read_in_data_MILES(file = 'Data/n1277b_cen.dat', c_light=299792.458):
@@ -1162,3 +1140,7 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
 
 
 ################################################################################
+
+
+
+
