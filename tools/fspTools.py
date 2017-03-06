@@ -11,7 +11,9 @@ c_light = const.c/1000.0
 ################################################################################################################################################################
 def lnlike_CvD(theta, parameters, plot=False):
 
-    galaxy, noise, velscale, goodpixels, vsyst, interp_funct, correction_interps, logLams, logLam_gal, fit_wavelengths=parameters
+    galaxy, noise, velscale, goodpixels, vsyst, interp_funct, correction_interps, logLams, logLam_gal, fit_wavelengths, plot_wavelengths=parameters
+
+
 
     general_interp, na_interp, positive_only_interp=correction_interps
 
@@ -52,6 +54,7 @@ def lnlike_CvD(theta, parameters, plot=False):
     chisq=0
 
     fit_ranges=fit_wavelengths*(np.exp(vel/c_light))
+    plot_ranges=plot_wavelengths*(np.exp(vel/c_light))
 
     #Do all the plotting, if required
     if plot==True:
@@ -97,13 +100,25 @@ def lnlike_CvD(theta, parameters, plot=False):
 
 
 
-        if plot:
-            x=np.exp(logLam_gal[gmask])/(np.exp(vel/c_light))
-            axs[i, 0].plot(x, g, c='k', linewidth=1.5)
-            axs[i, 0].plot(x, poly*t, c='b', linewidth=2.0)
-            axs[i, 0].fill_between(x, g-n, g+n, facecolor='k', alpha=0.3)
+    if plot:
+        for i, plot_range in enumerate(plot_ranges):
 
-            axs[i, 1].plot(x, 100*(g-poly*t)/(poly*t), c='k', linewidth=1.5)
+
+
+            gmask=np.where((np.exp(logLam_gal)>plot_range[0]) & (np.exp(logLam_gal)<plot_range[1]))
+    
+            g_plot=g[gmask]
+            n_plot=n[gmask]
+            t_plot=t[gmask]
+            poly_plot=poly[gmask]
+
+
+            x=np.exp(logLam_gal[gmask])/(np.exp(vel/c_light))
+            axs[i, 0].plot(x, g_plot, c='k', linewidth=1.5)
+            axs[i, 0].plot(x, poly_plot*t_plot, c='b', linewidth=2.0)
+            axs[i, 0].fill_between(x, g_plot-n_plot, g_plot+n_plot, facecolor='k', alpha=0.3)
+
+            axs[i, 1].plot(x, 100*(g_plot-poly_plot*t_plot)/(poly_plot*t_plot), c='k', linewidth=1.5)
             axs[i, 1].axhline(0.0, linestyle='dashed', c='k')
 
             
@@ -1064,7 +1079,7 @@ def NGC1277_CvD_set_up_emcee_parameters_CvD(file = '~/z/Data/IMF_Gold_Standard/n
     ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+2+3
 
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths, fit_wavelengths], logLam_gal, ndim
 
 def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NGC1277_RAD0.00_PPXF_NEW.cxt', verbose=True):
 
@@ -1096,7 +1111,7 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
     ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+2+3
 
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths, fit_wavelengths], logLam_gal, ndim
 
 
 ################################################################################
@@ -1105,6 +1120,8 @@ def NGC1277_CvD_set_up_emcee_parameters_MN(file = '~/z/Data/IMF_Gold_Standard/NG
 def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/SPV_NGC1277.dat', verbose=True):
 
     fit_wavelengths=np.array([[6300, 10412]])
+
+    plot_wavelengths=np.array([[6300, 7300], [7300, 8000], [8000, 9000], [9600, 10150]])
 
     positive_only_elems=['as/Fe+']#, 'as/Fe+']
     Na_elem=['Na']
@@ -1136,7 +1153,7 @@ def NGC1277_CvD_set_up_emcee_parameters_SPV(file = '~/z/Data/IMF_Gold_Standard/S
     ndim=len(positive_only_elems)+len(Na_elem)+len(normal_elems)+len(kinematic_parmas)+len(population_params)
 
 
-    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths], logLam_gal, ndim
+    return [galaxy, noise, velscale, goodpixels, dv, linear_interp, correction_interps, logLam_template, logLam_gal, fit_wavelengths, plot_wavelengths], logLam_gal, ndim
 
 
 ################################################################################
