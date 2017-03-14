@@ -6,7 +6,7 @@ import scipy.constants as const
 from scipy import interpolate
 from os.path import expanduser
 import glob
-#import atpy as at
+import scipy.interpolate as si
 
 cd12tools_basedir="/Data/stellarpops"
 
@@ -458,7 +458,6 @@ def CvD_cut_and_measure_index(spec, index, out_sigma, index_type='Simple', model
 
 
 
-
 def CD12_get_np_indices_for_params(IMFs=['x = 3.5', 'x = 3.0', 'x = 2.35', 'Chabrier', 'bottom-light'], \
     Zs=[0.00], ages=[3.0, 5.0, 7.0, 9.0, 11.0, 13.5], verbose=False):
 
@@ -486,5 +485,148 @@ def CD12_get_np_indices_for_params(IMFs=['x = 3.5', 'x = 3.0', 'x = 2.35', 'Chab
             param_dict[k]=v
 
     return param_dict
+
+
+
+
+
+
+
+def calcM2L(spec, filter, m, z=0.0, bandcor=False, plot=False):
+
+
+    factor= (L_sun/1e4/(10.0*ST.pc*100.0)**2.0) / (4.0*np.pi)
+    print 'Assuming the original spectrum is in units of L_sun/mu_m. Converting to erg/s/cm**2/AA (@10pc):'
+    newspec=ST.spectrum(spec.lam, spec.flam*factor)
+
+    sol = ST.loadHSTSolarSpec()
+    lsun = sol.quickABmag(filter, z=z, bandcor=bandcor, plot=plot)
+    msun = 1.0
+
+    l = newspec.quickABmag(filter, z=z, bandcor=bandcor, plot=plot)
+
+    m2l = (m/10.0**(-0.4*l)) / (msun/10.0**(-0.4*lsun))
+    #import pdb; pdb.set_trace()
+    return m2l
+
+def get_mass_for_spec(age, metallicity, imf_slope, filename='CvD16_mass_file_initial_mass.dat', dirpath='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files'):
+
+    mass_interp=make_mass_interpolator(filename=filename, dirpath=dirpath)
+
+    return mass_interp((imf_slope, metallicity, age))
+
+def CvD_IMF_shape(masses, mu, verbose=True):
+
+    """
+    CvD_IMF is a power law with slope 2.35>1 solar mass and slope mu below it.
+    However it also has a Kroupa IMF, which we take as mu=1.8 and deal with separately.
+    """
+
+    if mu!=1.8:
+        lower_section= masses[masses<1.0]**-mu
+        upper_section= masses[masses>=1.0]**-2.35
+        
+    else:
+        if verbose:
+            print 'Assuming we want a Kroupa IMF'
+        lowest_section= masses[masses<0.5]**-1.3
+        middle_section= masses[(masses<=1.0) & (masses>=0.5)]**-2.3
+
+        lower_section=np.concatenate((lowest_section, middle_section))
+
+        upper_section= masses[masses>=1.0]**-2.35
+
+
+    return np.concatenate((lower_section, upper_section))
+
+def get_mass_from_iso(iso, age, low_mass_slope, mass_type='initial_mass', verbose=True):
+
+
+    assert mass_type in ['initial_mass', 'star_mass'], 'Mass type must be one of "initial_mass" or "star_mass"'
+
+    logage=np.log10(age*10**9)
+    assert (logage>5.0) & (logage <10.3), "Age should be in Gyrs, and logAge must be between 5 and 10.3"
+
+    age_ind=iso.age_index(logage) 
+    masses=iso.isos[age_ind][mass_type]
+
+    m_low, m_up=0.1, 100
+    m=np.linspace(m_low, m_up, 100000)
+    m0=np.sum(m*CvD_IMF_shape(m, low_mass_slope, verbose=verbose))
+
+    m_at_age=np.sum(CvD_IMF_shape(m[m<masses[-1]], 2.35)*m[m<masses[-1]])
+
+    return m_at_age/m0
+
+
+def make_mass_interpolator(filename='CvD16_mass_file_initial_mass.dat', dirpath='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files'):
+
+
+
+    low_mass_slopes=[0.0, 1.8, 2.35, 3.0, 3.5]
+    ages=np.linspace(1e-3, 17, 100)
+    metallicities=[-4.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.25, 0.5]
+
+    masses=np.genfromtxt('{}/{}'.format(dirpath, filename)).reshape(len(low_mass_slopes), len(metallicities), len(ages))
+
+
+    mass_interp=si.RegularGridInterpolator((low_mass_slopes, metallicities, ages), masses)
+
+    return mass_interp
+
+
+def make_mass_text_file(mass_type='initial_mass'):
+
+    assert mass_type in ['initial_mass', 'star_mass'], 'Mass type must be one of "initial_mass" or "star_mass"'
+
+
+    import read_mist_models as RM
+
+    iso_m4=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_m4.00_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_m3=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_m3.00_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_m2=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_m2.00_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_m1=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_m2.00_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_m05=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_m0.50_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_p0=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_p0.00_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_p025=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_p0.25_afe_p0.0_vvcrit0.4_basic.iso')
+    iso_p05=RM.ISO('/Data/MIST_isochrones/MIST_v1.0_vvcrit0.4_basic_isos/MIST_v1.0_feh_p0.50_afe_p0.0_vvcrit0.4_basic.iso')
+
+
+    isos=[iso_m4,iso_m3,iso_m2,iso_m1, iso_m05,iso_p0, iso_p025, iso_p05]
+
+    low_mass_slopes=[0.0, 1.8, 2.35, 3.0, 3.5]
+    ages=np.linspace(1e-3, 17, 100)
+    metallicities=[-4.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.25, 0.5]
+
+    masses=np.empty((len(low_mass_slopes), len(metallicities), len(ages)))
+
+    for k, slope in enumerate(low_mass_slopes):
+        for i, iso in enumerate(isos):
+            for j, age in enumerate(ages):
+                masses[k, i, j]=get_mass_from_iso(iso, age, slope, mass_type=mass_type, verbose=False)
+
+    
+
+    fname='CvD16_mass_file_{}.dat'.format(mass_type)
+
+    with file(fname, 'w') as outfile:
+    # I'm writing a header here just for the sake of readability
+    # Any line starting with "#" will be ignored by numpy.loadtxt
+        outfile.write('# Array shape: {0}\n'.format(masses.shape))
+
+        # Iterating through a ndimensional array produces slices along
+        # the last axis. This is equivalent to data[i,:,:] in this case
+        for data_slice in masses:
+
+            # The formatting string indicates that I'm writing out
+            # the values in left-justified columns 7 characters in width
+            # with 2 decimal places.  
+            np.savetxt(outfile, data_slice, fmt='%1.5f')
+
+            # Writing out a break to indicate different slices...
+            outfile.write('# New slice\n')
+
+    print 'Saved mass text file to {}'.format(fname)
+
 
 

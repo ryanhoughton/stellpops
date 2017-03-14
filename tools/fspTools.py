@@ -26,7 +26,7 @@ def lnlike_CvD(theta, parameters, plot=False):
     #Don't fit age- keep it fixed at 13.5 Gyr
     age=13.5
 
-    base_template=make_model_CvD(theta, interp_funct, logLams)
+    base_template=make_model_CvD(age, Z, imf, interp_funct, logLams)
 
 
     #If positive abundances has only one element, run it as a usual interpoaltor without going through the get correction function
@@ -179,16 +179,7 @@ def lnprior_CvD(theta):
 
 
 
-def make_model_CvD(theta, interp_funct, logLams):
-
-    vel, sigma=theta[0], theta[1]
-    Na_abundance=theta[2]
-    general_abundances=theta[3:-3]
-    positive_abundances=theta[-3]
-    Z, imf=theta[-2:]
-    
-    #Don't fit age- keep it fixed at 13.5 Gyr
-    age=13.5
+def make_model_CvD(age, Z, imf, interp_funct, logLams):
 
     model=interp_funct((logLams, age, Z, imf))
 
@@ -890,7 +881,7 @@ def NGC1277_CVD_read_in_data_SPV(file = '~/z/Data/IMF_Gold_Standard/n1277b_cen.d
     file=os.path.expanduser(file)
     lamdas, flux, variance, inst_res=np.genfromtxt(file, unpack=True)
     #Redshift of NGC1277, used to get the initial velocity
-    z=0.017044
+    #z=0.017044
     errors=np.sqrt(variance)
     lamdas*=10**4
 
