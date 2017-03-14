@@ -2,6 +2,7 @@ import numpy as np
 import pylab as pl
 import pdb
 from stellarpops.tools import specTools as ST
+from stellarpops.tools import fspTools as FT
 import scipy.constants as const
 from scipy import interpolate
 from os.path import expanduser
@@ -492,25 +493,39 @@ def CD12_get_np_indices_for_params(IMFs=['x = 3.5', 'x = 3.0', 'x = 2.35', 'Chab
 
 
 
-def calcM2L(spec, filter, m, z=0.0, bandcor=False, plot=False):
+def calcM2L(filter, age, Z, imf, best_spec=None, z=0.0, bandcor=False, plot=False, change_units=True):
 
-
+    """
+    Given a spectrum with an age, Z and IMF, calculate its M/L ratio in a given filter.
+    Assume we just want the visible here- if not, make sure you change the range of your
+    templates to include the filter bandpass!
+    """
     factor= (L_sun/1e4/(10.0*ST.pc*100.0)**2.0) / (4.0*np.pi)
-    print 'Assuming the original spectrum is in units of L_sun/mu_m. Converting to erg/s/cm**2/AA (@10pc):'
-    newspec=ST.spectrum(spec.lam, spec.flam*factor)
+
+    
+    if best_spec is None:
+        lam_range_temp=[3000, 11000]       
+
+        interp, lin_lams= FT.prepare_linear_CvD_interpolator(lam_range_temp, verbose=False)
+        best_spec=ST.spectrum(lin_lams, interp((lin_lams, age, Z, imf))*factor)
+    else:
+        if change_units:
+            best_spec=ST.spectrum(best_spec.lam, best_spec.flam*factor)
+    m=get_mass_for_spec(age, Z, imf)
 
     sol = ST.loadHSTSolarSpec()
-    lsun = sol.quickABmag(filter, z=z, bandcor=bandcor, plot=plot)
+    lsun = sol.calcABmag(filter, z=z, bandcor=bandcor, plot=False)
     msun = 1.0
 
-    l = newspec.quickABmag(filter, z=z, bandcor=bandcor, plot=plot)
+    l = best_spec.calcABmag(filter, z=z, bandcor=bandcor, plot=False)
 
     m2l = (m/10.0**(-0.4*l)) / (msun/10.0**(-0.4*lsun))
-    #import pdb; pdb.set_trace()
+
     return m2l
 
-def get_mass_for_spec(age, metallicity, imf_slope, filename='CvD16_mass_file_initial_mass.dat', dirpath='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files'):
+def get_mass_for_spec(age, metallicity, imf_slope, filename='CvD16_mass_file_initial_mass_with_remnants.dat', dirpath='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files'):
 
+    print 'getting the mass file from {}'.format(filename)
     mass_interp=make_mass_interpolator(filename=filename, dirpath=dirpath)
 
     return mass_interp((imf_slope, metallicity, age))
@@ -524,7 +539,7 @@ def CvD_IMF_shape(masses, mu, verbose=True):
 
     if mu!=1.8:
         lower_section= masses[masses<1.0]**-mu
-        upper_section= masses[masses>=1.0]**-2.35
+        upper_section= masses[masses>=1.0]**-2.3
         
     else:
         if verbose:
@@ -534,12 +549,13 @@ def CvD_IMF_shape(masses, mu, verbose=True):
 
         lower_section=np.concatenate((lowest_section, middle_section))
 
-        upper_section= masses[masses>=1.0]**-2.35
+        upper_section= masses[masses>=1.0]**-2.3
 
 
     return np.concatenate((lower_section, upper_section))
 
-def get_mass_from_iso(iso, age, low_mass_slope, mass_type='initial_mass', verbose=True):
+
+def get_mass_from_iso(iso, age, low_mass_slope, mass_type='initial_mass', verbose=True, remnants=True):
 
 
     assert mass_type in ['initial_mass', 'star_mass'], 'Mass type must be one of "initial_mass" or "star_mass"'
@@ -550,24 +566,52 @@ def get_mass_from_iso(iso, age, low_mass_slope, mass_type='initial_mass', verbos
     age_ind=iso.age_index(logage) 
     masses=iso.isos[age_ind][mass_type]
 
-    m_low, m_up=0.1, 100
+    m_low, m_up=0.08, 100
     m=np.linspace(m_low, m_up, 100000)
-    m0=np.sum(m*CvD_IMF_shape(m, low_mass_slope, verbose=verbose))
+    dm=np.mean(np.ediff1d(m))
+    m0=np.trapz(m*CvD_IMF_shape(m, low_mass_slope, verbose=verbose), dx=dm)
 
-    m_at_age=np.sum(CvD_IMF_shape(m[m<masses[-1]], 2.35)*m[m<masses[-1]])
+    most_massive_alive_star=masses[-1]
+
+    m_at_age=np.trapz(CvD_IMF_shape(m[m<most_massive_alive_star], low_mass_slope, verbose=verbose)*m[m<most_massive_alive_star], dx=dm)
+
+    if remnants:
+        #For the remnants, the standard equations that I think most people use are in Renzini & Ciotti (1993), Section 2.  
+
+        # Notes from Charlie Conroy:
+
+        # !BH remnants
+        #     !40<M<imf_up leave behind a 0.5*M BH
+
+        # !NS remnants
+        #     !8.5<M<40 leave behind 1.4 Msun NS
+
+        # !WD remnants
+        #     !M<8.5 leave behind 0.077*M+0.48 WD
+        remnants_mass_BH=np.trapz(m[m>40]*CvD_IMF_shape(m[m>40], low_mass_slope, verbose=verbose), dx=dm)*0.5
+
+        remnants_mass_NS=np.trapz(CvD_IMF_shape(m[((m>8.5)&(m<40))], low_mass_slope, verbose=verbose), dx=dm)*1.4
+
+        remnants_mass_WD=np.trapz(CvD_IMF_shape(m[((m>most_massive_alive_star) & (m<8.5))], low_mass_slope, verbose=verbose), dx=dm)*0.48 + \
+            np.trapz(m[((m>most_massive_alive_star) & (m<8.5))]*CvD_IMF_shape(m[((m>most_massive_alive_star) & (m<8.5))], low_mass_slope, verbose=verbose), dx=dm)*0.077
+
+        m_at_age+=remnants_mass_BH+remnants_mass_NS+remnants_mass_WD
+
+
 
     return m_at_age/m0
 
 
-def make_mass_interpolator(filename='CvD16_mass_file_initial_mass.dat', dirpath='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files'):
+def make_mass_interpolator(filename='CvD16_mass_file_initial_mass_with_remnants.dat', dirpath='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files'):
 
 
 
-    low_mass_slopes=[0.0, 1.8, 2.35, 3.0, 3.5]
+    low_mass_slopes=[0.0, 1.8, 2.3, 3.0, 3.5]
     ages=np.linspace(1e-3, 17, 100)
     metallicities=[-4.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.25, 0.5]
 
-    masses=np.genfromtxt('{}/{}'.format(dirpath, filename)).reshape(len(low_mass_slopes), len(metallicities), len(ages))
+    data=np.genfromtxt('{}/{}'.format(dirpath, filename))
+    masses=data.reshape(len(low_mass_slopes), len(metallicities), len(ages))
 
 
     mass_interp=si.RegularGridInterpolator((low_mass_slopes, metallicities, ages), masses)
@@ -575,7 +619,7 @@ def make_mass_interpolator(filename='CvD16_mass_file_initial_mass.dat', dirpath=
     return mass_interp
 
 
-def make_mass_text_file(mass_type='initial_mass'):
+def make_mass_text_file(mass_type='initial_mass', remnants=True):
 
     assert mass_type in ['initial_mass', 'star_mass'], 'Mass type must be one of "initial_mass" or "star_mass"'
 
@@ -594,20 +638,26 @@ def make_mass_text_file(mass_type='initial_mass'):
 
     isos=[iso_m4,iso_m3,iso_m2,iso_m1, iso_m05,iso_p0, iso_p025, iso_p05]
 
-    low_mass_slopes=[0.0, 1.8, 2.35, 3.0, 3.5]
+    low_mass_slopes=[0.0, 1.8, 2.3, 3.0, 3.5]
     ages=np.linspace(1e-3, 17, 100)
     metallicities=[-4.0, -3.0, -2.0, -1.0, -0.5, 0.0, 0.25, 0.5]
 
     masses=np.empty((len(low_mass_slopes), len(metallicities), len(ages)))
+    if remnants:
+        print 'Making a mass grid including remnants'
+    else:
+        print 'Making a mass grid NOT including remnants'
 
     for k, slope in enumerate(low_mass_slopes):
         for i, iso in enumerate(isos):
             for j, age in enumerate(ages):
-                masses[k, i, j]=get_mass_from_iso(iso, age, slope, mass_type=mass_type, verbose=False)
+                masses[k, i, j]=get_mass_from_iso(iso, age, slope, mass_type=mass_type, verbose=False, remnants=remnants)
 
     
-
-    fname='CvD16_mass_file_{}.dat'.format(mass_type)
+    if remnants:
+        fname='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files/CvD16_mass_file_{}_with_remnants.dat'.format(mass_type)
+    else:
+        fname='/home/vaughan/Science/MIST_isochrones/CvD16_mass_files/CvD16_mass_file_{}_without_remnants.dat'.format(mass_type)
 
     with file(fname, 'w') as outfile:
     # I'm writing a header here just for the sake of readability
@@ -621,7 +671,7 @@ def make_mass_text_file(mass_type='initial_mass'):
             # The formatting string indicates that I'm writing out
             # the values in left-justified columns 7 characters in width
             # with 2 decimal places.  
-            np.savetxt(outfile, data_slice, fmt='%1.5f')
+            np.savetxt(outfile, data_slice, fmt='%1.10f')
 
             # Writing out a break to indicate different slices...
             outfile.write('# New slice\n')

@@ -711,6 +711,94 @@ def prepare_CvD_correction_interpolators(templates_lam_range, velscale, elements
 
 
 
+################################################################################################################################################################
+
+
+
+
+
+################################################################################################################################################################
+def prepare_CvD16_for_M2L_calc(templates_lam_range, verbose=False):
+
+    """
+    Prepare the CvD16 templates for mass-to-light calculations. This means DON'T log-rebin them!
+    Just interpolate them to have even wavelength spacing
+    """
+    import glob
+    import os
+    template_glob=os.path.expanduser('~/z/Data/stellarpops/CvD2/vcj_models/VCJ_*.s100')
+
+    vcj_models=sorted(glob.glob(template_glob))
+    temp_lamdas, x35, x3, x23, kroupa, flat=np.genfromtxt(vcj_models[-1], unpack=True)
+
+    n_ages=7
+    n_zs=5
+    n_imfs=5
+
+    
+
+
+    Zs=['m1.5', 'm1.0', 'm0.5', 'p0.0', 'p0.2']
+    ages=[1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.5]
+    model_imfs_order=['x35', 'x3', 'x23', 'kroupa', 'flat']
+
+    t_mask = ((temp_lamdas > templates_lam_range[0]) & (temp_lamdas <templates_lam_range[1]))
+
+
+
+    y=x35[t_mask]
+    x=temp_lamdas[t_mask]
+
+    #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+    new_x=temp_lamdas[t_mask][0]+0.9*(np.arange(np.ceil((temp_lamdas[t_mask][-1]-temp_lamdas[t_mask][0])/0.9))+1)
+    interp=si.interp1d(x, y, fill_value='extrapolate')
+    out=interp(new_x)
+
+    templates=np.empty((len(out), n_ages, n_zs, n_imfs))
+
+
+
+    for a, Z in enumerate(Zs):    
+        for b, age in enumerate(ages):
+            model=glob.glob(os.path.expanduser('~/z/Data/stellarpops/CvD2/vcj_models/VCJ_*{}*{}.ssp.s100'.format(Z, age)))[0]
+            if verbose:
+                print 'Loading {}'.format(model)
+            data=np.genfromtxt(model)
+
+            for c, counter in enumerate(reversed(range(1, data.shape[-1]))):
+                
+                #Interpolate templates onto a uniform wavelength grid and then log-rebin
+                y=data[:, counter][t_mask]   
+                x=temp_lamdas[t_mask]
+                #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+                new_x=temp_lamdas[t_mask][0]+0.9*(np.arange(np.ceil((temp_lamdas[t_mask][-1]-temp_lamdas[t_mask][0])/0.9))+1)
+
+                interp=si.interp1d(x, y, fill_value='extrapolate')
+                out=interp(new_x)       
+
+                templates[:, b, a, c]=out
+
+    return templates, new_x
+
+
+
+################################################################################################################################################################
+def prepare_linear_CvD_interpolator(templates_lam_range, verbose=False):
+
+    templates, linear_lamdas=prepare_CvD16_for_M2L_calc(templates_lam_range, verbose=verbose)
+
+    ages=[  1.,   3.,   5.,  7., 9.,  11.0, 13.5]
+    Zs=[-1.5, -1.0, -0.5, 0.0, 0.2]
+    imfs=[0.0, 1.8, 2.3, 3.0, 3.5]
+
+    interp=si.RegularGridInterpolator(((linear_lamdas, ages, Zs, imfs)), templates, bounds_error=False, fill_value=None)
+
+    return interp, linear_lamdas
+
+################################################################################################################################################################
+
+
+################################################################################################################################################################
 # ################################################################################################################################################################
 # def prepare_Miles_templates(templates_lam_range, velscale, template_dictionary=None, NaFe=0.0, imf_type='uni', verbose=True):
 

@@ -526,11 +526,15 @@ class spectrum:
 
         # cycle through spectra, calculating mag for each
         mag = []
-        for fmu in self.fmu:
-            ifmu = interpolate(self.mu, fmu, mu)
+        fmus=np.atleast_2d(self.fmu)
+        dx=np.median(np.ediff1d(mu))
+        for fmu in fmus:
+            
+            ifmu = interpolate(self.mu, fmu, mu, method=2)
             
             # integrate using simple trapezium method
-            flux = np.sum(ifmu*ithro/mu) / np.sum(ithro/mu) # this normalisation by the filter curve means mags are bandpass corrected (bandpass term of K-cor)
+            #flux = np.sum(ifmu*ithro/mu) / np.sum(ithro/mu) # this normalisation by the filter curve means mags are bandpass corrected (bandpass term of K-cor)
+            flux = np.trapz(ifmu*ithro/mu, dx=dx) / np.trapz(ithro/mu, dx=dx)
             
             # calc mag: but remember that flux in GJy (mu in GHz has no effect with trapezium integration)
             if bandcor:
@@ -601,41 +605,41 @@ class spectrum:
             
         return mags
 
-    def conv_spec_with_filter(self, filter, z=0.0, plot=False):
+    # def conv_spec_with_filter(self, filter, z=0.0, plot=False):
 
-        """
-        Take a spectrum and convolve with a filter, to get the flux observed. This is useful for 
-        the CvD spectra, where the units are funny (L_sun per mu_m) and the usual quickABmag code doesn't
-        work (since it assumes flux is in GJy)
+    #     """
+    #     Take a spectrum and convolve with a filter, to get the flux observed. This is useful for 
+    #     the CvD spectra, where the units are funny (L_sun per mu_m) and the usual quickABmag code doesn't
+    #     work (since it assumes flux is in GJy)
 
-        """
+    #     """
 
-                # check object type of filter: make sure Spectrum
-        if isinstance(filter,object)==False: raise "Filter is not a class"
-        if len(filter.fmu) > 1: raise "Filter has more than one throughput curve (multispec)"
+    #             # check object type of filter: make sure Spectrum
+    #     if isinstance(filter,object)==False: raise "Filter is not a class"
+    #     if len(filter.fmu) > 1: raise "Filter has more than one throughput curve (multispec)"
         
-        # interpolate the filter curve onto the spec
-        ithro = np.array(interpolate(filter.mu*(1.0+z), filter.fmu[0], self.mu, method=2))
-        loc = np.where(ithro > 0.0)[0]
-        lithro = ithro[loc]
-        dmu = (self.mu[loc]-self.mu[loc+1]) # be sure to correct for uneven mu spacing
-        lithro *= dmu/self.mu[loc] # divide by mu here as it occurs in integral - Hogg k-cor
+    #     # interpolate the filter curve onto the spec
+    #     ithro = np.array(interpolate(filter.mu*(1.0+z), filter.fmu[0], self.mu, method=2))
+    #     loc = np.where(ithro > 0.0)[0]
+    #     lithro = ithro[loc]
+    #     dmu = (self.mu[loc]-self.mu[loc+1]) # be sure to correct for uneven mu spacing
+    #     lithro *= dmu/self.mu[loc] # divide by mu here as it occurs in integral - Hogg k-cor
         
-        # calc mags
+    #     # calc mags
         
-        specs = np.atleast_2d(self.fmu)
+    #     specs = np.atleast_2d(self.fmu)
 
-        import pdb; pdb.set_trace()
+    #     import pdb; pdb.set_trace()
 
-        #Bit of a hack! Fix this?
-        if self.fmu.ndim<3:
+    #     #Bit of a hack! Fix this?
+    #     if self.fmu.ndim<3:
             
-            fluxes = np.dot(specs[:, loc],lithro) / np.sum(lithro)
-        else:
+    #         fluxes = np.dot(specs[:, loc],lithro) / np.sum(lithro)
+    #     else:
 
-            fluxes = np.dot(specs.T[loc].T,lithro) / np.sum(lithro) # this normalisation is essentially bandpass term of K-correction
+    #         fluxes = np.dot(specs.T[loc].T,lithro) / np.sum(lithro) # this normalisation is essentially bandpass term of K-correction
 
-        return fluxes
+    #     return fluxes
 
 
 
