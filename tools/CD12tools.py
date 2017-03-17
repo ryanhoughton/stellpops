@@ -2,7 +2,6 @@ import numpy as np
 import pylab as pl
 import pdb
 from stellarpops.tools import specTools as ST
-from stellarpops.tools import fspTools as FT
 import scipy.constants as const
 from scipy import interpolate
 from os.path import expanduser
@@ -501,11 +500,11 @@ def calcM2L(filter, age, Z, imf, best_spec=None, z=0.0, bandcor=False, plot=Fals
     templates to include the filter bandpass!
     """
     factor= (L_sun/1e4/(10.0*ST.pc*100.0)**2.0) / (4.0*np.pi)
-
+    
     
     if best_spec is None:
         lam_range_temp=[3000, 11000]       
-
+        from stellarpops.tools import fspTools as FT
         interp, lin_lams= FT.prepare_linear_CvD_interpolator(lam_range_temp, verbose=False)
         best_spec=ST.spectrum(lin_lams, interp((lin_lams, age, Z, imf))*factor)
     else:
@@ -677,6 +676,8 @@ def make_mass_text_file(mass_type='initial_mass', remnants=True):
             outfile.write('# New slice\n')
 
     print 'Saved mass text file to {}'.format(fname)
+
+
 
 
 
