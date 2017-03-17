@@ -81,9 +81,6 @@ def lnlike_CvD(theta, parameters, plot=False):
 
 
     for i, fit_range in enumerate(fit_ranges):
-
-
-
         #tmask=np.where((np.exp(logLams)>fit_range[0]) & (np.exp(logLams)<fit_range[1]))
         gmask=np.where((np.exp(logLam_gal)>fit_range[0]) & (np.exp(logLam_gal)<fit_range[1]))
     
@@ -92,6 +89,7 @@ def lnlike_CvD(theta, parameters, plot=False):
         t=temp[gmask]
 
         morder=int((fit_range[1]-fit_range[0])/100)
+        print morder
         poly=fit_legendre_polys(g/t, morder)
 
 
@@ -577,7 +575,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verb
                     dV[new_x>7500]=65.3 #R=2000.0
                     sigs=np.sqrt(100.0**2-dV**2)
 
-                    out=util.gaussian_filter1d(out, sigs/velscale)
+                    data=util.gaussian_filter1d(data, sigs/velscale)
                             
                     sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
 
