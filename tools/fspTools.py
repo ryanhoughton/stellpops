@@ -283,10 +283,11 @@ def lnlike(theta, parameters):
 
 
 ################################################################################################################################################################
-def fit_legendre_polys(ratio, morder):
+def fit_legendre_polys(ratio, morder, weights=None):
+
 
     x_vals=np.linspace(-1, 1, len(ratio))
-    coeffs=np.polynomial.legendre.legfit(x_vals, ratio, morder)
+    coeffs=np.polynomial.legendre.legfit(x_vals, ratio, morder, w=weights)
 
     polynomial=np.polynomial.legendre.legval(x_vals, coeffs)
 

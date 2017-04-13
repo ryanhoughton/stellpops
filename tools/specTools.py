@@ -813,16 +813,18 @@ class spectrum:
         global c
 
         # get minimum vel resolution in spec and use this for dloglam
-        velscale = np.min((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 # km/s
+        velscale = np.mean((self.lam[1:]-self.lam[:-1])/self.lam[:-1]) * c / 1e3 # km/s
         dloglam = np.log10(1.0 + velscale/c*1e3)
         nloglam = np.round((np.log10(self.lam.max())-np.log10(self.lam.min())) / dloglam)
         nloglam = self.flam.shape[-1]
         self.velscale=velscale
         
+
+        
         # calc regular loglam grid
         self.loglam = 10.0**np.linspace(np.log10(self.lam[0]), np.log10(self.lam[-1]), nloglam )
         
-
+        
         count=0
         self.logflam=np.empty_like(self.flam).reshape(-1, self.flam.shape[-1])
 
@@ -851,7 +853,7 @@ class spectrum:
                 sigmaKernel = sigma
             
             dv = np.ceil(nsig*sigmaKernel/velscale) 
-            nv = 2*dv + 1
+            nv = int(2*dv + 1)
             v = np.linspace(dv,-dv,nv) 
             w = (v - vel/velscale) / (sigmaKernel/velscale)
             w2= w*w

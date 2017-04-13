@@ -80,21 +80,21 @@ def loadCD12ssps(sedpath=cd12tools_basedir+"CvD12_v1.2", ageglob="t??.?_solar.ss
 
     return specs
 
-def loadCD12varelem():
+def loadCD12varelem(basedir=cd12tools_basedir):
     """
     RH 28/10/2016
     Load the CvD spectra with varyine element abundances.
     """
-    return loadCD12spec(basedir+"CvD12_v1.2/"+"t13.5_varelem.ssp")
+    return loadCD12spec(basedir+"/CvD1.2/"+"t13.5_varelem.ssp")
 
-def loadCD12afe():
+def loadCD12afe(basedir=cd12tools_basedir):
     """
     RH 1/11/2016
     Load the CvD spectra with varying [alpha/Fe]
     """
-    s02 = loadCD12spec(basedir+"CvD12_v1.2/"+"t13.5_afe+0.2.ssp")
-    s03 = loadCD12spec(basedir+"CvD12_v1.2/"+"t13.5_afe+0.3.ssp")
-    s04 = loadCD12spec(basedir+"CvD12_v1.2/"+"t13.5_afe+0.4.ssp")
+    s02 = loadCD12spec(basedir+"/CvD1.2/"+"t13.5_afe+0.2.ssp")
+    s03 = loadCD12spec(basedir+"/CvD1.2/"+"t13.5_afe+0.3.ssp")
+    s04 = loadCD12spec(basedir+"/CvD1.2/"+"t13.5_afe+0.4.ssp")
     return [s02,s03,s04]
 
 def load_all_CD12spec(base_dir=cd12tools_basedir, folder="CvD1.2", verbose=True):
@@ -422,28 +422,42 @@ def CD16_get_np_indices_for_params(IMFs=['x35', 'x3', 'x23', 'kroupa', 'flat'], 
 
 
 
-def CvD_cut_and_measure_index(spec, index, out_sigma, index_type='Simple', model_sigma=None, n_sig=10.0):
+def CvD_cut_and_measure_index(spec, index, out_sigma, index_type='Simple', model_sigma=None, n_sig=10.0, verbose=False):
 
     """
-    Use specTools to cut a long spectrum down to size and measure an index. CvD12v1.2 models have a resolving power of 2000
+    Use specTools to cut a long spectrum down to size and measure an index. CvD12v1.2 models have a resolving power of 2000 above 7500A, 
+    a FWHM of 2.51A below. 
     """
 
 
     
     if out_sigma>0.0:
         if model_sigma is None: 
+
+            if np.atleast_1d(np.array(index['red_stop']))[-1]<7500.0:
+
+                if index['nfeat']>0.0:
+                    model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['ind_start'][0]*1000.0)
+                else:
+                    model_sigma=const.c*2.5/(np.sqrt(8.*np.log(2.0))*index['blue_stop']*1000.0)
+
+            # assert out_sigma > model_sigma, 'Cant convolve to a resolution below the model resolution'
+            # conv_sigma=np.sqrt(out_sigma**2 - model_sigma**2)
                
-            model_sigma=const.c/(np.sqrt(8.*np.log(2.0))*2000*1000)
+            else:
+                model_sigma=const.c/(np.sqrt(8.*np.log(2.0))*2000*1000)
+
             assert out_sigma > model_sigma, 'Cant convolve to a resolution below the model resolution'
             conv_sigma=np.sqrt(out_sigma**2 - model_sigma**2)
-        else:
-            assert out_sigma > model_sigma, 'Cant convolve to a resolution below the model resolution'
-            conv_sigma=np.sqrt(out_sigma**2 - model_sigma**2)
+
+        cutspec=ST.cutAndGaussVelConvolve(spec, index, conv_sigma, verbose=False, fix_uneven_lamdas=True, n_sig=n_sig)
     else:
-        conv_sigma=0.0
+        if verbose:
+            print 'Not convolving the spectrum'
+        cutspec=spec
 
 
-    cutspec=ST.cutAndGaussVelConvolve(spec, index, conv_sigma, verbose=False, fix_uneven_lamdas=True, n_sig=n_sig)
+    
 
 
     if index_type=='Cenarro':

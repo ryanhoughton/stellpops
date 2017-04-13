@@ -92,21 +92,21 @@ def load_eMILES_spectra(basedir='/Data/stellarpops/Miles', NaFe=0.0, Zs=None, ve
 
     import os
     basedir=os.path.expanduser(basedir)
-    if imf_type=='bi':
-        if NaFe==0.0:
+    if NaFe==0.0:
+        if imf_type=='bi':
             folder='bi_base_set'
-        elif NaFe==0.3:
-            folder='NaFep03'
-        elif NaFe==0.6:
-            folder='NaFep06'
-        elif NaFe==0.9:
-            folder='NaFep09'
-        elif NaFe==1.2:
-            folder='NaFep12'
-        else:
-            raise NameError('NaFe abundance not understood')
+        elif imf_type=='uni':
+            folder='uni_base_set'
+    elif NaFe==0.3:
+        folder='NaFep03/{}'.format(imf_type)
+    elif NaFe==0.6:
+        folder='NaFep06/{}'.format(imf_type)
+    elif NaFe==0.9:
+        folder='NaFep09/{}'.format(imf_type)
+    elif NaFe==1.2:
+        folder='NaFep12/{}'.format(imf_type)
     else:
-        folder='uni_base_set'
+        raise NameError('NaFe abundance not understood')
 
     #Solar metallicity
 
@@ -190,7 +190,7 @@ def load_eMILES_spectra(basedir='/Data/stellarpops/Miles', NaFe=0.0, Zs=None, ve
 
 
 
-def cut_and_measure_index(spec, index, out_sigma, index_type='Cenarro', model_sigma=None):
+def cut_and_measure_index(spec, index, out_sigma, index_type='Cenarro', model_sigma=None, n_sig=10.0):
 
     """
     Use specTools to cut a long spectrum down to size and measure an index
@@ -225,7 +225,7 @@ def cut_and_measure_index(spec, index, out_sigma, index_type='Cenarro', model_si
         conv_sigma=np.sqrt(out_sigma**2 - model_sigma**2)
 
 
-    cutspec=s.cutAndGaussVelConvolve(spec, index, conv_sigma, verbose=False)
+    cutspec=s.cutAndGaussVelConvolve(spec, index, conv_sigma, verbose=False, n_sig=n_sig)
     if index_type=='Cenarro':
         indvals=s.calcCenarroIndex(cutspec, index)
     elif index_type=='Simple':
