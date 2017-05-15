@@ -162,11 +162,13 @@ def optimal_extraction(x, y, binNum, cube, varcube):
                     plt.plot(lamdas, spec/nspec, c=cm(1.0*j/13.0), linewidth=2.0)
                 plt.show()
 
-def simple_extraction(x, y, binNum, cube, verbose=False):
+def simple_extraction(x, y, binNum, cube, verbose=False, type='sum'):
 
     """Extract a spectrum by simply summing all the pixels in a bin at each wavelength value
 
-    Ignore nans by making a global 'nan' mask and using the bitwise and with that and the bin mask
+    Ignore nans by making a global 'nan' mask and using the bitwise and with that and the bin mask.
+
+    Can either add spectra by summing or median combining (very simply! No continuum adition or anything)
     """
 
     binNum=binNum.astype(int)
@@ -206,8 +208,12 @@ def simple_extraction(x, y, binNum, cube, verbose=False):
 
         masked_cube=ma.array(cube, mask=final_mask)
 
-
-        spectra[i :]=ma.sum(ma.sum(masked_cube, axis=2), axis=1)
+        if type=='sum':
+            spectra[i :]=ma.sum(ma.sum(masked_cube, axis=2), axis=1)
+        elif type=='median':
+            spectra[i :]=ma.median(ma.median(masked_cube, axis=2), axis=1)
+        else:
+            return NameError('Type of combination not understood')
 
     return spectra, nan_mask
 

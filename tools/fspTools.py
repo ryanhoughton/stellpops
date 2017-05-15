@@ -512,7 +512,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verb
     import os
     template_glob=os.path.expanduser('~/z//Data/stellarpops/CvD2/vcj_models/VCJ_*.s100')
 
-    var_elem_spectra=CT.load_varelem_CvD16ssps(dirname=os.path.expanduser('~/z/Data/stellarpops/CvD2'), folder='atlas_rfn_v3', imf='kroupa')
+    var_elem_spectra=CT.load_varelem_CvD16ssps(dirname=os.path.expanduser('~/z/Data/stellarpops/CvD2'), folder='atlas_rfn_v3', imf='salp')
 
     ages=var_elem_spectra['Solar'].age[:, 0]
     Zs=var_elem_spectra['Solar'].Z[0, :]
@@ -529,6 +529,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verb
     elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.45]
     Na_elem_steps=[-0.45, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
     positive_only_elem_steps=[0.0, 0.1, 0.2, 0.3, 0.45]
+    T_steps=[-0.5, -0.4, -0.3, -0.2, -0.1, 0.0, 0.1, 0.2, 0.3, 0.4, 0.5] #In units of 100k. Otherwise we have a (10**40-1)/(10**50-1) in our correction factor, which isn't okay. Not sure if this is the right way to do it though...
 
 
     x=var_elem_spectra['Solar'].lam[t_mask]
@@ -562,6 +563,7 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verb
 
                     else:
                         y=np.zeros_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+
 
                     x=var_elem_spectra[elem].lam[t_mask]
                     #Make a new lamda array, carrying on the delta lamdas of high resolution bit
@@ -655,6 +657,46 @@ def prepare_CvD2_element_templates(templates_lam_range, velscale, elements, verb
                 
                 if step !=0.0:
                     y=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask]-1)*((10**(Na_step)-1.0)/(10**(base_enhancement)-1.0))
+
+                else:
+
+                    y=np.zeros_like(var_elem_spectra['Solar'].flam[c, d, t_mask])
+
+
+                x=var_elem_spectra[e].lam[t_mask]
+                #Make a new lamda array, carrying on the delta lamdas of high resolution bit
+                new_x=var_elem_spectra[e].lam[t_mask][0]+0.9*(np.arange(np.ceil((var_elem_spectra[e].lam[t_mask][-1]-var_elem_spectra[e].lam[t_mask][0])/0.9))+1)
+                interp=si.interp1d(x, y, fill_value='extrapolate')
+                data=interp(new_x)
+                #convolve the templates to have a uniform resolution of 100$
+                #This is fine for the massive galaxies we're going to study$
+                #Resolution of the CvD models is dLam=2.51A below 7500A and$
+                dV=const.c*2.51/(new_x*1000*np.sqrt(8*np.log(2)))
+                dV[new_x>7500]=65.3 #R=2000.0
+                sigs=np.sqrt(100.0**2-dV**2)
+
+                data=util.gaussian_filter1d(data, sigs/velscale)
+
+
+                    
+                sspNew, logLam_template, template_velscale = util.log_rebin(templates_lam_range, data, velscale=velscale)
+                na_templates[a, b, c, :]=sspNew
+
+
+    print 'Making the Temperature Correction template'
+    for a, step in enumerate(T_steps):
+        for b, _ in enumerate(ages):
+            for c, _ in enumerate(Zs):
+
+                if step>0.0:
+                    e='T+'
+                    T_step=step
+                elif step<0.0:
+                    e='T-'
+                    T_step=np.abs(step)
+            
+                if step !=0.0:
+                    y=(var_elem_spectra[e].flam[b, c, t_mask]/var_elem_spectra['Solar'].flam[b, c, t_mask]-1)*((10**(T_step)-1.0)/(10**(0.5)-1.0))
 
                 else:
 

@@ -647,6 +647,37 @@ def load_Miles_M_L_table(IMF_type='bi', dir_name='/Data/stellarpops/Miles/Mass_f
 
     return table
 
+
+def M2L_for_age_Z_IMF(age, Z, IMF, IMF_type='uni', band='V'):
+
+    """
+    For a given Age, Z and IMF, calculate the M/L of that spectrum. We do this by interpolating the tables of calculated values
+    """
+
+    #Because of rounding errors, we have to get the lists of ages and metallicities this way
+    #They're not quite the lists we expect, i.e
+    # Zs=np.array([-0.4, 0.00, 0.2223])
+    # ages=np.array([5.011,   5.623,   6.309,   7.079,   7.943,   8.912,  10.0,  11.22,   12.589, 14.125,  15.848,  17.782])
+    # imfs=np.array([ 0.3,  0.8,  1. ,  1.3,  1.5,  1.8,  2. ,  2.3,  2.5,  2.8,  3. ,3.3])
+    table=load_Miles_M_L_table(IMF_type)
+
+    ages=np.unique(table['Age'].data)[np.unique(table['Age'].data)>5.0]
+    Zs=np.unique(table['[M/H]'].data)[np.unique(table['[M/H]'].data)>-0.5]
+    imfs=np.unique(table['slope'].data)
+
+
+
+    MLs=np.empty((12, len(ages), len(Zs)))
+    for i, a in enumerate(ages):
+        for j, zval in enumerate(Zs):
+            table=get_M_L(IMF_type, band, age=a, Z=zval)
+            MLs[:, i, j]=table[1].data
+
+    ML_interp=si.RegularGridInterpolator((imfs, ages, Zs), MLs, fill_value=None, bounds_error=False)
+
+    return ML_interp((IMF, age, Z))
+
+
 def get_M_L(IMF_type, band, age=14.1254, Z=0.00):
 
     """

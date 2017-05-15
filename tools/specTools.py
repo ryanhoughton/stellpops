@@ -719,7 +719,7 @@ class spectrum:
 
 
 
-    def calcM2L(self, filter, z=0.0, bandcor=False):
+    def calcM2L(self, filter, z=0.0, bandcor=False, plot=False):
         """
         Purpose: use a filter, SED and details of stellar masses of sed to calc
                  the mass-to-light ratio, relative to the Sun.
@@ -735,11 +735,11 @@ class spectrum:
         """
 
         sol = loadHSTSolarSpec()
-        lsun = sol.quickABmag(filter, z=z, bandcor=bandcor, plot=True)
+        lsun = sol.quickABmag(filter, z=z, bandcor=bandcor, plot=plot)
         msun = 1.0
         
         
-        l = self.quickABmag(filter, z=z, bandcor=bandcor, plot=True)
+        l = self.quickABmag(filter, z=z, bandcor=bandcor, plot=plot)
         m = self.mass
         m2l = (m/10.0**(-0.4*l)) / (msun/10.0**(-0.4*lsun))
         #import pdb; pdb.set_trace()
@@ -1866,8 +1866,13 @@ def calcSimpleIndex(spectrum, index, contMethod='mean', disp=None, round_prec=8,
         # calc linear continuum: y=mx+c using simple simultaneous equn solution
         gradient = (yAv[0]-yAv[1]) / (xAv[0]-xAv[1])
         intercept    = yAv[0]-gradient*xAv[0]
-
+        
         if calcVar:
+            #This doesn't work! Need to fix. SPV April 2017
+            VyAv=np.array(VyAv)
+            yAv=np.array(yAv)
+            VxAv=np.array(VxAv)
+            xAv=np.array(xAv)
             # calc errors on grad and intercept - see notes 2/11/16
             Vgradient = gradient**2. * ( (VyAv/yAv**2.) + (VxAv/xAv**2.) )
             VCs = VyAv #+ gradient**2. * VxAv

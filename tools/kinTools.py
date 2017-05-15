@@ -16,6 +16,7 @@ from ppxf.ppxf import ppxf
 import ppxf.ppxf_util as util
 import pdb
 
+import os
 #from spectools import *
 #from CvD12tools import *
 #from python_utils import sky_shift
@@ -168,7 +169,7 @@ def ppxf_fit_spec(galaxy, noise, templates, fit_range, lamRange2, logLam1, logLa
 
 #------------------------------------------------------------------------------
 
-def load_CvD_templates(FWHM_galaxy, lamRange1, velscale, z=0.0, cvd_dir='/Data/stellarpops/CvD1.2'):
+def load_CvD_templates(FWHM_galaxy, lamRange1, velscale, z=0.0, cvd_dir=os.path.expanduser('~/z/Data/stellarpops/CvD1.2')):
 
 
     """
@@ -273,7 +274,7 @@ def load_CaT_templates(FWHM_galaxy, velscale, cat_dir="FIXME"):
     return templates, loglam2
 
 
-def mask_and_log_rebin(lamdas, spec, lamRange):
+def mask_and_log_rebin(lamdas, spec, lamRange, velscale=None):
 
     """Mask and log rebin a spectrum
 
@@ -287,7 +288,10 @@ def mask_and_log_rebin(lamdas, spec, lamRange):
 
     spec=spec[mask]
 
-    spec, logLam1, velscale = util.log_rebin(lamRange, spec)
+    if velscale is None:
+        spec, logLam1, velscale = util.log_rebin(lamRange, spec)
+    else:
+        spec, logLam1, velscale = util.log_rebin(lamRange, spec)
 
     return spec, logLam1, velscale
 
